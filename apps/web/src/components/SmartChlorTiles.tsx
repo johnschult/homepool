@@ -38,9 +38,12 @@ export default function SmartChlorTiles({ value, onChange, invalid }: Props) {
       <div style={{ display: 'flex', gap: 4 }}>
         {TILES.map(({ status, labelKey }) => {
           const selected = value === status
+          // "out" uses the real FROG @ease OUT-indicator pad color (from the
+          // physical strip bottle), not a generic danger-red token — same
+          // swatch-accuracy treatment as the pH/TAC/hardness pads.
           const tone = status === 'ok'
             ? { bg: 'var(--status-ok-bg)', color: 'var(--status-ok-text)' }
-            : { bg: 'var(--status-danger-bg)', color: 'var(--status-danger-text)' }
+            : { bg: '#B85D7E', color: 'rgba(255,255,255,0.9)' }
           return (
             <button
               key={status}
