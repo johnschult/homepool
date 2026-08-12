@@ -22,6 +22,10 @@ const buttonVariants = cva(
       size: {
         default: "h-10 px-4 py-2",
         sm: "h-9 px-3",
+        // Matches the ~32px height of the app's custom .btn-ghost/.btn-primary
+        // classes and header search inputs — for a shadcn Button sitting in a
+        // page-header-actions row next to those, not a full-size form button.
+        xs: "h-8 px-3",
         lg: "h-11 px-8",
         icon: "h-10 w-10",
       },

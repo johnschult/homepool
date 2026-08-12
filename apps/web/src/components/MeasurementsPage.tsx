@@ -245,7 +245,7 @@ export default function MeasurementsPage({ actions, onAdd }: Props) {
             ))}
           </div>
           {onAdd && (
-            <button className="btn-primary" onClick={onAdd}>
+            <button className="btn-primary" onClick={onAdd} style={{ height: 32, padding: '0 14px' }}>
               <Plus size={15} strokeWidth={2} />
               {t('nav_new_entry_aria')}
             </button>

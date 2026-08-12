@@ -100,7 +100,7 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
       <div className="page-header">
         <h1 className="page-header-title">{t('recommendations_page_title')}</h1>
         <div className="page-header-actions">
-          <Button type="button" variant="outline" onClick={() => setShowSimulator(true)}>
+          <Button type="button" variant="outline" size="xs" onClick={() => setShowSimulator(true)}>
             {t('simulator_open_button')}
           </Button>
         </div>

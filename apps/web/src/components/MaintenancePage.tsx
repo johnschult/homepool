@@ -118,7 +118,7 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
         </div>
         {isOwner && (
           <div className="page-header-actions">
-            <Button type="button" variant="outline" onClick={() => setShowConfig(true)}>
+            <Button type="button" variant="outline" size="xs" onClick={() => setShowConfig(true)}>
               {t('maint_configure')}
             </Button>
           </div>

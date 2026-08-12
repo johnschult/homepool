@@ -384,7 +384,7 @@ export default function HistoryPage({ actions, products, onEdit, onDelete }: Pro
                 background: 'var(--bg-surface)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-sm)',
-                padding: '6px 10px 6px 26px',
+                padding: '7px 10px 7px 26px',
                 width: 160,
                 outline: 'none',
               }}

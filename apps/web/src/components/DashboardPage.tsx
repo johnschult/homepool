@@ -240,12 +240,12 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         </div>
         <div className="page-header-actions">
           {onExport && (
-            <button className="btn-ghost" onClick={onExport} title={t('export_label')} aria-label={t('export_label')} style={{ padding: '7px 9px' }}>
+            <button className="btn-ghost" onClick={onExport} title={t('export_label')} aria-label={t('export_label')} style={{ height: 32, padding: '0 9px' }}>
               <Download size={15} strokeWidth={1.75} />
             </button>
           )}
           {onImport && (
-            <label className="btn-ghost" title={t('import_label')} aria-label={t('import_label')} style={{ padding: '7px 9px' }}>
+            <label className="btn-ghost" title={t('import_label')} aria-label={t('import_label')} style={{ height: 32, padding: '0 9px' }}>
               <Upload size={15} strokeWidth={1.75} />
               <input
                 type="file"
@@ -259,7 +259,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
             </label>
           )}
           {onAdd && (
-            <button className="btn-primary" onClick={onAdd}>
+            <button className="btn-primary" onClick={onAdd} style={{ height: 32, padding: '0 14px' }}>
               <Plus size={15} strokeWidth={2} />
               {t('nav_new_entry_aria')}
             </button>
