@@ -57,34 +57,43 @@ limiter = Limiter(key_func=get_remote_address)
 
 # ── Reference ranges per installation type ─────────────────────────────────
 
+# Key order within each combo below is the order compute_recommendations
+# returns/displays recommendations in (it iterates the dict as-is) — and is
+# deliberately chemistry-order, not alphabetical: sanitizer first
+# (safety/sanitization takes priority), then TA, then pH (TA is the pH
+# buffer, so it's set before pH rather than after — dialing in pH first just
+# means TA correction shifts it right back out), then hardness last
+# (slow-moving, a scaling/corrosion concern rather than a day-to-day
+# sanitizing one). Matches PoolMath/Trouble Free Pool's balancing order,
+# which FROG's own guidance follows too.
 WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
     ("pool", "bromine"): {
-        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "br":     {"ideal": (2.0, 5.0), "acceptable": (1.0, 10.0)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
+        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (24, 28),   "acceptable": (15, 35)},
         "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
     ("pool", "chlorine"): {
-        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "cl":     {"ideal": (1.0, 3.0), "acceptable": (0.5, 4.0)},
         "cc":     {"ideal": (0, 0.2),   "acceptable": (0, 0.5)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
+        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (24, 28),   "acceptable": (15, 35)},
         "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
     ("spa", "bromine"): {
-        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "br":     {"ideal": (3.0, 6.0), "acceptable": (2.0, 10.0)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
+        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (36, 40),   "acceptable": (30, 42)},
         "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
     ("spa", "chlorine"): {
-        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "cl":     {"ideal": (3.0, 5.0), "acceptable": (2.0, 6.0)},
         "cc":     {"ideal": (0, 0.2),   "acceptable": (0, 0.5)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
+        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (36, 40),   "acceptable": (30, 42)},
         "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
@@ -98,12 +107,12 @@ WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
     # total alkalinity slows that rise, so SWG pools are intentionally run leaner
     # on TA rather than being flagged low against a non-SWG band.
     ("pool", "salt"): {
-        "ph":     {"ideal": (7.2, 7.6),   "acceptable": (6.8, 7.8)},
         "salt":   {"ideal": (2700, 3400), "acceptable": (2500, 4500)},
         "cya":    {"ideal": (60, 80),     "acceptable": (30, 100)},
         "cl":     {"ideal": (3.0, 5.0),   "acceptable": (2.0, 6.0)},
         "cc":     {"ideal": (0, 0.2),     "acceptable": (0, 0.5)},
         "tac":    {"ideal": (60, 80),     "acceptable": (50, 100)},
+        "ph":     {"ideal": (7.2, 7.6),   "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (24, 28),     "acceptable": (15, 35)},
         "hardness": {"ideal": (100, 500),   "acceptable": (50, 1000)},
     },
@@ -111,12 +120,12 @@ WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
     # approximation pending better field data. TAC follows the same lower SWG
     # band as salt pools, for the same pH-rise reasoning.
     ("spa", "salt"): {
-        "ph":     {"ideal": (7.2, 7.6),   "acceptable": (6.8, 7.8)},
         "salt":   {"ideal": (2500, 3200), "acceptable": (2000, 4000)},
         "cya":    {"ideal": (30, 50),     "acceptable": (0, 80)},
         "cl":     {"ideal": (3.0, 5.0),   "acceptable": (2.0, 6.0)},
         "cc":     {"ideal": (0, 0.2),     "acceptable": (0, 0.5)},
         "tac":    {"ideal": (60, 80),     "acceptable": (50, 100)},
+        "ph":     {"ideal": (7.2, 7.6),   "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (36, 40),     "acceptable": (30, 42)},
         "hardness": {"ideal": (100, 500),   "acceptable": (50, 1000)},
     },
@@ -135,14 +144,14 @@ WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
     # band) and should be revisited if better guidance turns up. No CYA either,
     # since FROG spas don't run a stabilizer.
     ("pool", "frog_smartchlor"): {
-        "ph":     {"ideal": (7.2, 7.8), "acceptable": (6.8, 8.2)},
         "tac":    {"ideal": (80, 120),  "acceptable": (60, 140)},
+        "ph":     {"ideal": (7.2, 7.8), "acceptable": (6.8, 8.2)},
         "temp":   {"ideal": (24, 28),   "acceptable": (15, 35)},
         "hardness": {"ideal": (150, 250), "acceptable": (100, 300)},
     },
     ("spa", "frog_smartchlor"): {
-        "ph":     {"ideal": (7.2, 7.8), "acceptable": (6.8, 8.2)},
         "tac":    {"ideal": (80, 120),  "acceptable": (60, 140)},
+        "ph":     {"ideal": (7.2, 7.8), "acceptable": (6.8, 8.2)},
         "temp":   {"ideal": (36, 40),   "acceptable": (30, 42)},
         "hardness": {"ideal": (150, 250), "acceptable": (100, 300)},
     },

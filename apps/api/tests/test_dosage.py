@@ -244,3 +244,27 @@ def test_frog_smartchlor_never_recommends_chlorine_even_if_current_has_a_value()
     params = {r["param"] for r in recs}
     assert "cl" not in params
     assert "tac" in params
+
+
+def test_recommendations_are_ordered_alkalinity_before_ph():
+    """Total alkalinity buffers pH -- fixing pH before TA just means the TA
+    correction shifts it right back out of range, so TA must always be
+    recommended first when both are off. compute_recommendations returns
+    recommendations in WATER_PARAMS' key order, so this is really a
+    key-ordering regression test (a prior ordering listed pH first for every
+    sanitizer combo, ahead of TA and even the sanitizer itself)."""
+    installation = make_installation(sanitizer="frog_smartchlor", type="spa", volume=1500, volume_unit="L")
+    ranges = ranges_for(installation)
+    current = current_of(ph=6.5, tac=40)  # both below their ideal band -> both recommended
+    recs = compute_recommendations(current, ranges, installation)
+    params = [r["param"] for r in recs]
+    assert params.index("tac") < params.index("ph")
+
+
+def test_recommendations_are_ordered_sanitizer_then_alkalinity_then_ph():
+    installation = make_installation(sanitizer="chlorine", type="pool", volume=10000, volume_unit="L")
+    ranges = ranges_for(installation)
+    current = current_of(ph=6.5, chlorine=0.2, tac=40)  # all three below ideal
+    recs = compute_recommendations(current, ranges, installation)
+    params = [r["param"] for r in recs]
+    assert params.index("cl") < params.index("tac") < params.index("ph")
