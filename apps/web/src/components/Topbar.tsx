@@ -18,17 +18,15 @@ function getIsDark(theme: Theme): boolean {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
+// Both switches are sized to sit side by side in one row (see their shared
+// usage site below) rather than each owning a full-width row of their own.
+
 function ThemeSwitch({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void }) {
   const isDark = getIsDark(theme)
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark')
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10,
-      padding: '6px 12px',
-    }}>
-      <Sun size={14} strokeWidth={1.75} aria-hidden="true" style={{ color: 'var(--text-muted)', opacity: isDark ? 0.4 : 1, transition: 'opacity 0.2s' }} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+      <Sun size={13} strokeWidth={1.75} aria-hidden="true" style={{ color: 'var(--text-muted)', opacity: isDark ? 0.4 : 1, transition: 'opacity 0.2s' }} />
 
       <div
         onClick={toggleTheme}
@@ -38,8 +36,8 @@ function ThemeSwitch({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) =
         tabIndex={0}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleTheme() } }}
         style={{
-          width: 40,
-          height: 22,
+          width: 34,
+          height: 19,
           borderRadius: 100,
           background: isDark ? 'var(--accent-dim)' : 'var(--bg-surface-2)',
           border: '1px solid var(--border)',
@@ -51,18 +49,18 @@ function ThemeSwitch({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) =
       >
         <div style={{
           position: 'absolute',
-          top: 3,
-          left: 3,
-          width: 14,
-          height: 14,
+          top: 2,
+          left: 2,
+          width: 13,
+          height: 13,
           borderRadius: '50%',
           background: 'var(--accent)',
-          transform: isDark ? 'translateX(18px)' : 'translateX(0)',
+          transform: isDark ? 'translateX(15px)' : 'translateX(0)',
           transition: 'transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
         }} />
       </div>
 
-      <Moon size={14} strokeWidth={1.75} aria-hidden="true" style={{ color: 'var(--text-muted)', opacity: isDark ? 1 : 0.4, transition: 'opacity 0.2s' }} />
+      <Moon size={13} strokeWidth={1.75} aria-hidden="true" style={{ color: 'var(--text-muted)', opacity: isDark ? 1 : 0.4, transition: 'opacity 0.2s' }} />
     </div>
   )
 }
@@ -72,21 +70,24 @@ function LocaleSwitch({ locale, setLocale }: { locale: Locale; setLocale: (l: Lo
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 4,
-      padding: '2px 12px',
+      gap: 2,
+      background: 'var(--bg-surface-2)',
+      border: '1px solid var(--border)',
+      borderRadius: 6,
+      padding: 2,
+      flexShrink: 0,
     }}>
       {(['fr', 'en'] as Locale[]).map(l => (
         <button
           key={l}
           onClick={() => setLocale(l)}
           style={{
-            flex: 1,
-            padding: '4px 0',
+            padding: '3px 8px',
             borderRadius: 4,
             border: 'none',
             background: locale === l ? 'var(--accent-dim)' : 'transparent',
             color: locale === l ? 'var(--accent)' : 'var(--text-muted)',
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: 600,
             cursor: 'pointer',
             fontFamily: "'IBM Plex Mono', monospace",
@@ -170,10 +171,10 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
           onClick={() => onNavigate?.('log')}
           aria-label={t('nav_log')}
           style={{
-            padding: '0 16px 16px',
+            padding: '4px 16px 18px',
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
+            gap: 12,
             background: 'none',
             border: 'none',
             borderBottom: '1px solid var(--border-subtle)',
@@ -185,12 +186,12 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
           <img
             src={homepoolSidebarLogo}
             alt=""
-            width={32}
-            height={32}
+            width={42}
+            height={42}
             style={{ flexShrink: 0 }}
           />
           <div style={{
-            fontSize: 16,
+            fontSize: 22,
             fontWeight: 700,
             letterSpacing: '-0.02em',
             lineHeight: 1,
@@ -357,8 +358,12 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
             </div>
           )}
 
-          {setTheme && <ThemeSwitch theme={theme} setTheme={setTheme} />}
-          <LocaleSwitch locale={locale} setLocale={setLocale} />
+          {/* Theme + locale on one row — two prefs that don't need a full
+              width each to themselves. */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px' }}>
+            {setTheme && <ThemeSwitch theme={theme} setTheme={setTheme} />}
+            <LocaleSwitch locale={locale} setLocale={setLocale} />
+          </div>
 
           {onProfile && (
             <button className="btn-sidebar-logout" onClick={onProfile} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
