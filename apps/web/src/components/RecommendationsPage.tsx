@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { PartyPopper } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Action, Recommendation, RecommendationsResponse, TreatmentProduct } from '../types'
 import { PARAM_GUIDANCE } from '../paramGuidance'
@@ -104,9 +105,19 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
       )}
 
       {!loading && data && data.recommendations.length === 0 && (
-        <div style={{ ...sectionCardStyle, textAlign: 'center' }}>
-          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-ok-text)', margin: 0 }}>
+        <div style={{ ...sectionCardStyle, padding: '32px 16px', textAlign: 'center' }}>
+          <div style={{
+            width: 48, height: 48, margin: '0 auto 12px', borderRadius: '50%',
+            background: 'var(--status-ok-bg)', color: 'var(--status-ok-text)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <PartyPopper size={22} strokeWidth={1.75} aria-hidden="true" />
+          </div>
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 15, fontWeight: 600, color: 'var(--status-ok-text)', margin: '0 0 4px' }}>
             {t('recommendations_empty')}
+          </p>
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+            {t('recommendations_empty_sub')}
           </p>
         </div>
       )}
