@@ -428,7 +428,11 @@ button {
 
 .param-tile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  /* auto-fit (not auto-fill): with too few tiles to fill a row, auto-fill
+     reserves invisible empty tracks and leaves a blank gap on the right;
+     auto-fit collapses those tracks so the real tiles' 1fr stretches to
+     fill the row instead. */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
