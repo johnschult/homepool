@@ -175,12 +175,18 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
       status: params.tac !== null ? getTacStatus(params.tac, ranges ?? undefined) : null,
       historyKey: 'tac', range: r('tac'), format: v => String(Math.round(v)),
     })
-    defs.push({
-      key: 'temp', label: t('param_temp_label'),
-      value: params.temp !== null ? params.temp.toFixed(1) : '—', unit: `°${active?.temp_unit ?? 'C'}`,
-      status: params.temp !== null ? getTempStatus(params.temp, ranges ?? undefined) : null,
-      historyKey: 'temp', range: r('temp'), format: v => v.toFixed(1),
-    })
+    // Unlike pH/TAC/hardness, temperature usually isn't on a test strip at
+    // all — plenty of installations never log it. An ever-empty "—" tile for
+    // a param nobody tracks is just dead weight, so it only shows up once
+    // there's an actual value to display.
+    if (params.temp !== null) {
+      defs.push({
+        key: 'temp', label: t('param_temp_label'),
+        value: params.temp.toFixed(1), unit: `°${active?.temp_unit ?? 'C'}`,
+        status: getTempStatus(params.temp, ranges ?? undefined),
+        historyKey: 'temp', range: r('temp'), format: v => v.toFixed(1),
+      })
+    }
     if (ranges?.stabilizer) {
       defs.push({
         key: 'stabilizer', label: t('guidance_cya_label'),
@@ -285,6 +291,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
             ))}
             {sanitizerCapabilities(sanitizer).supportsSmartChlorStatus && (
               <SmartChlorCard
+                variant="tile"
                 status={smartChlor?.status ?? null}
                 lastCheckedDate={smartChlor?.date ?? null}
                 onClick={() => onNavigate?.('measurements')}

@@ -89,6 +89,7 @@ export const translations = {
     param_ideal_label: 'idéal',
     dash_last_measured: 'Dernière mesure',
     dash_smartchlor_title: 'Cartouche SmartChlor',
+    dash_smartchlor_title_short: 'SmartChlor',
     dash_not_checked: 'Non vérifié',
     onboarding_title: 'Bienvenue sur homepool',
     onboarding_sub: 'Ajoutez votre première piscine ou votre premier spa pour commencer.',
@@ -99,7 +100,7 @@ export const translations = {
     page_measurements_sub: "Suivi des paramètres de qualité de l'eau",
     measurements_this_month: 'Mesures ce mois',
     measurements_records_saved: 'relevés enregistrés',
-    measurements_ph_trend: 'Tendance pH',
+    measurements_ph_trend: 'Variation du pH',
     measurements_stable: 'Stable',
     measurements_rising: 'En hausse',
     measurements_falling: 'En baisse',
@@ -170,6 +171,10 @@ export const translations = {
     smartchlor_instruction: 'Comparez la case indicateur « Out » à la bouteille FROG.',
     smartchlor_ok: 'OK — cartouche active',
     smartchlor_out: 'HORS SERVICE — remplacer la cartouche',
+    smartchlor_ok_short: 'OK',
+    smartchlor_out_short: 'HS',
+    smartchlor_ok_sub: 'Cartouche active',
+    smartchlor_out_sub: 'Remplacer la cartouche',
     modal_smartchlor_required: 'Sélectionnez l’état de la cartouche SmartChlor pour terminer ce contrôle.',
 
     // Modal Installation
@@ -681,6 +686,7 @@ export const translations = {
     param_ideal_label: 'ideal',
     dash_last_measured: 'Last measured',
     dash_smartchlor_title: 'SmartChlor cartridge',
+    dash_smartchlor_title_short: 'SmartChlor',
     dash_not_checked: 'Not checked',
     onboarding_title: 'Welcome to homepool',
     onboarding_sub: 'Add your first pool or spa to get started.',
@@ -762,6 +768,10 @@ export const translations = {
     smartchlor_instruction: 'Compare the Out Indicator pad to the FROG bottle.',
     smartchlor_ok: 'OK — cartridge active',
     smartchlor_out: 'OUT — replace cartridge',
+    smartchlor_ok_short: 'OK',
+    smartchlor_out_short: 'OUT',
+    smartchlor_ok_sub: 'Cartridge active',
+    smartchlor_out_sub: 'Replace cartridge',
     modal_smartchlor_required: 'Select the SmartChlor cartridge status to finish this check.',
 
     // Modal Installation

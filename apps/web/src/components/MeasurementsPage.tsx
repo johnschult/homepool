@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { TrendingUp, TrendingDown, MoveRight } from 'lucide-react'
+import { TrendingUp, TrendingDown, MoveRight, ListChecks, FlaskConical, CalendarCheck, LineChart, Table2 } from 'lucide-react'
 import type { Action } from '../types'
 import {
   PARAM_RANGES,
@@ -94,6 +94,15 @@ const kpiLabel: React.CSSProperties = {
   textTransform: 'uppercase' as const,
   letterSpacing: '0.05em',
   color: 'var(--text-muted)',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+}
+
+const sectionTitleRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
 }
 
 const kpiValue: React.CSSProperties = {
@@ -233,14 +242,22 @@ export default function MeasurementsPage({ actions }: Props) {
 
         {/* KPI 1 */}
         <div className="card" style={{ padding: '12px 16px' }}>
-          <div style={kpiLabel}>{t('measurements_this_month')}</div>
+          <div style={kpiLabel}>
+            <ListChecks size={12} strokeWidth={1.75} aria-hidden="true" />
+            {t('measurements_this_month')}
+          </div>
           <div style={kpiValue}>{measuresThisMonth}</div>
           <div style={kpiSub}>{t('measurements_records_saved')}</div>
         </div>
 
-        {/* KPI 2 — pH trend */}
+        {/* KPI 2 — pH change over the period (the "pH trend" chart below is
+            the full picture; this is just the delta + direction at a glance,
+            so it gets its own distinct label rather than repeating "trend"). */}
         <div className="card" style={{ padding: '12px 16px' }}>
-          <div style={kpiLabel}>{t('measurements_ph_trend')}</div>
+          <div style={kpiLabel}>
+            <FlaskConical size={12} strokeWidth={1.75} aria-hidden="true" />
+            {t('measurements_ph_trend')}
+          </div>
           {phTrend ? (
             <div style={{ ...kpiValue, fontSize: 16 }}>
               {phTrend.first.toFixed(1)} → {phTrend.last.toFixed(1)}
@@ -253,7 +270,10 @@ export default function MeasurementsPage({ actions }: Props) {
 
         {/* KPI 3 — Last reading */}
         <div className="card" style={{ padding: '12px 16px' }}>
-          <div style={kpiLabel}>{t('measurements_last_record')}</div>
+          <div style={kpiLabel}>
+            <CalendarCheck size={12} strokeWidth={1.75} aria-hidden="true" />
+            {t('measurements_last_record')}
+          </div>
           {lastMeasure ? (
             <>
               <div style={{ ...kpiValue, fontSize: 16 }}>{formatDateLong(lastMeasure.date, locale)}</div>
@@ -274,7 +294,10 @@ export default function MeasurementsPage({ actions }: Props) {
         {/* pH chart */}
         <div className="card" style={{ padding: 16 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div className="section-title" style={{ margin: 0 }}>{t('graph_ph_trend')}</div>
+            <div className="section-title" style={{ ...sectionTitleRow, margin: 0 }}>
+              <LineChart size={13} strokeWidth={1.75} aria-hidden="true" />
+              {t('graph_ph_trend')}
+            </div>
             {phLast && (
               <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, fontWeight: 500, color: valueColor(getPhStatus(phLast.value, ranges ?? undefined)) }}>
                 {phLast.value.toFixed(1)}
@@ -301,7 +324,10 @@ export default function MeasurementsPage({ actions }: Props) {
         ) : (
           <div className="card" style={{ padding: 16 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div className="section-title" style={{ margin: 0 }}>{t('graph_chlorine_trend')}</div>
+              <div className="section-title" style={{ ...sectionTitleRow, margin: 0 }}>
+                <LineChart size={13} strokeWidth={1.75} aria-hidden="true" />
+                {t('graph_chlorine_trend')}
+              </div>
               {clLast && (
                 <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, fontWeight: 500, color: valueColor(getChlorineStatus(clLast.value, ranges ?? undefined)) }}>
                   {clLast.value.toFixed(1)} {active?.conc_unit ?? 'mg/L'}
@@ -327,7 +353,10 @@ export default function MeasurementsPage({ actions }: Props) {
       <div className="card" style={{ padding: 16, marginTop: 14 }}>
         {/* Table header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div className="section-title" style={{ margin: 0 }}>{t('measurements_all_records')}</div>
+          <div className="section-title" style={{ ...sectionTitleRow, margin: 0 }}>
+            <Table2 size={13} strokeWidth={1.75} aria-hidden="true" />
+            {t('measurements_all_records')}
+          </div>
           <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, color: 'var(--text-muted)' }}>
             {tableRows.length} {t('measurements_records_saved')}
           </div>
@@ -362,8 +391,11 @@ export default function MeasurementsPage({ actions }: Props) {
                     <td style={{ padding: '9px 8px 9px 0', textAlign: 'right' }}>
                       {showSmartChlor
                         ? (smartchlorStatus
+                          // Short form (OK/OUT), matching the terseness of the
+                          // other cells in this row — the full phrase lives on
+                          // the SmartChlor card/tile, not this dense table.
                           ? <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, fontWeight: 600, color: smartchlorStatus === 'ok' ? 'var(--status-ok-text)' : 'var(--status-danger-text)' }}>
-                              {smartchlorStatus === 'ok' ? t('smartchlor_ok') : t('smartchlor_out')}
+                              {smartchlorStatus === 'ok' ? t('smartchlor_ok_short') : t('smartchlor_out_short')}
                             </span>
                           : <span style={{ color: 'var(--text-muted)', fontFamily: '"IBM Plex Mono", monospace', fontSize: 12 }}>—</span>)
                         : cellValue(chlorine, v => getChlorineStatus(v, ranges ?? undefined), v => `${v.toFixed(1)} ${active?.conc_unit ?? 'mg/L'}`)}

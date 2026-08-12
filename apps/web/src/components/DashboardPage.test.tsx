@@ -64,7 +64,10 @@ describe('DashboardPage — FROG @ease SmartChlor', () => {
     const actions = [makeMeasurement({ notes: 'TAC: 100' })]
     render(<DashboardPage actions={actions} products={[]} />)
 
-    await waitFor(() => expect(screen.getByText(translations.fr.dash_smartchlor_title)).toBeInTheDocument())
+    // The Dashboard tile is the compact variant — it shows the short title
+    // ("SmartChlor"), not the full "Cartouche SmartChlor" used on the wider
+    // Measurements card.
+    await waitFor(() => expect(screen.getByText(translations.fr.dash_smartchlor_title_short)).toBeInTheDocument())
     expect(screen.getByText(translations.fr.dash_not_checked)).toBeInTheDocument()
     expect(screen.queryByText(translations.fr.param_chlorine)).not.toBeInTheDocument()
   })
@@ -84,7 +87,10 @@ describe('DashboardPage — FROG @ease SmartChlor', () => {
     const actions = [makeMeasurement({ notes: 'chlorine: 3. TAC: 100' })]
     render(<DashboardPage actions={actions} products={[]} />)
 
-    await waitFor(() => expect(screen.getByText(translations.fr.dash_smartchlor_title)).toBeInTheDocument())
+    // The Dashboard tile is the compact variant — it shows the short title
+    // ("SmartChlor"), not the full "Cartouche SmartChlor" used on the wider
+    // Measurements card.
+    await waitFor(() => expect(screen.getByText(translations.fr.dash_smartchlor_title_short)).toBeInTheDocument())
     expect(screen.queryByText(translations.fr.param_chlorine)).not.toBeInTheDocument()
   })
 
