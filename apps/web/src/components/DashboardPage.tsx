@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTriangle, ChevronRight, Droplets, Check, LineChart, History } from 'lucide-react'
+import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTriangle, ChevronRight, Droplets, Check, LineChart, History, Waves, Gem, Thermometer, Droplet, Snowflake, Shield, type LucideIcon } from 'lucide-react'
 import type { Action, Product, RecommendationsResponse, MaintenanceTask } from '../types'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
@@ -54,6 +54,17 @@ const sectionTitleRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 6,
+}
+
+const TILE_ICON: Record<string, LucideIcon> = {
+  ph: FlaskConical,
+  tac: Waves,
+  hardness: Gem,
+  temp: Thermometer,
+  chlorine: Droplet,
+  bromine: Droplets,
+  salt: Snowflake,
+  stabilizer: Shield,
 }
 
 type Props = {
@@ -439,6 +450,7 @@ function ParamTile({ tile, actions, onClick }: { tile: TileDef; actions: Action[
     [actions, tile.historyKey],
   )
   const rail = tile.status !== null ? statusColor(tile.status) : 'var(--border)'
+  const Icon = TILE_ICON[tile.key] ?? FlaskConical
   return (
     <button
       className="param-tile"
@@ -446,7 +458,8 @@ function ParamTile({ tile, actions, onClick }: { tile: TileDef; actions: Action[
       style={{ '--tile-rail': rail, opacity: hasData ? 1 : 0.6 } as React.CSSProperties}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <Icon size={12} strokeWidth={1.75} aria-hidden="true" style={{ flexShrink: 0 }} />
           {tile.label}
         </span>
         {tile.status !== null && (

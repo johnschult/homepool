@@ -416,6 +416,16 @@ button {
   border-color: var(--border);
 }
 
+/* Non-interactive param-tile (e.g. SmartChlorCard with no onClick) — no
+   pointer cursor, no hover highlight suggesting it's clickable. */
+.param-tile-static {
+  cursor: default;
+}
+
+.param-tile-static:hover {
+  background: var(--bg-surface);
+}
+
 .param-tile::before {
   content: '';
   position: absolute;

@@ -7,10 +7,10 @@ type Props = {
   lastCheckedDate: string | null
   onClick?: () => void
   /** 'tile' matches ParamTile exactly (short value + one-line sub-label, no
-   * badge, no last-checked line) so it sits cleanly in the Dashboard's
-   * fixed-width tile grid next to pH/alkalinity/hardness. 'card' is the
-   * wider standalone card on the Measurements page, which has room for the
-   * last-checked date and the FROG @ease badge. Defaults to 'card'. */
+   * last-checked line) so it sits cleanly in the Dashboard's fixed-width
+   * tile grid next to pH/alkalinity/hardness. 'card' is the wider standalone
+   * card on the Measurements page, which has room to also show the
+   * last-checked date. Defaults to 'card'. */
   variant?: 'tile' | 'card'
   style?: React.CSSProperties
 }
@@ -23,6 +23,11 @@ type Props = {
 export default function SmartChlorCard({ status, lastCheckedDate, onClick, variant = 'card', style }: Props) {
   const { t } = useT()
   const isTile = variant === 'tile'
+  // Measurements page renders this with no onClick at all (there's nowhere
+  // to navigate to from there) — a <button> with pointer/hover affordance
+  // that does nothing on click reads as broken, so it's a plain <div> then.
+  const Tag = onClick ? 'button' : 'div'
+  const className = `param-tile${onClick ? '' : ' param-tile-static'}`
 
   const rail = status === 'ok'
     ? 'var(--status-ok-text)'
@@ -43,8 +48,13 @@ export default function SmartChlorCard({ status, lastCheckedDate, onClick, varia
 
   const labelRow = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-      <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {t(isTile ? 'dash_smartchlor_title_short' : 'dash_smartchlor_title')}
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {/* The 🐸 emoji, not the FROG® mascot artwork — that's King
+            Technology's registered trademark and this repo is MIT-licensed
+            and publicly redistributed. Already used elsewhere (the strip
+            profile picker) for the same reason. */}
+        <span aria-hidden="true">🐸</span>
+        <span>{t(isTile ? 'dash_smartchlor_title_short' : 'dash_smartchlor_title')}</span>
       </span>
       {status !== null && (
         <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: rail, flexShrink: 0 }} />
@@ -67,8 +77,8 @@ export default function SmartChlorCard({ status, lastCheckedDate, onClick, varia
 
   if (isTile) {
     return (
-      <button
-        className="param-tile"
+      <Tag
+        className={className}
         onClick={onClick}
         style={{ '--tile-rail': rail, opacity: status !== null ? 1 : 0.6, display: 'flex', flexDirection: 'column', ...style } as React.CSSProperties}
       >
@@ -81,13 +91,13 @@ export default function SmartChlorCard({ status, lastCheckedDate, onClick, varia
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           {valueBlock}
         </div>
-      </button>
+      </Tag>
     )
   }
 
   return (
-    <button
-      className="param-tile"
+    <Tag
+      className={className}
       onClick={onClick}
       style={{
         '--tile-rail': rail, opacity: status !== null ? 1 : 0.6,
@@ -103,27 +113,12 @@ export default function SmartChlorCard({ status, lastCheckedDate, onClick, varia
       {labelRow}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         {valueBlock}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 8 }}>
-          {lastCheckedLabel ? (
-            <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, color: 'var(--text-muted)' }}>
-              {t('dash_last_measured')} {lastCheckedLabel}
-            </div>
-          ) : <span />}
-          {/* A plain-text nod to the brand (plus the 🐸 emoji, already used
-              elsewhere for the FROG strip profile) rather than the FROG®
-              mascot artwork — that's King Technology's registered trademark
-              and this repo is MIT-licensed and publicly redistributed. */}
-          <span style={{
-            display: 'flex', alignItems: 'center', gap: 3,
-            fontFamily: '"IBM Plex Mono", monospace', fontSize: 9, fontWeight: 600, letterSpacing: '0.03em',
-            padding: '2px 6px', borderRadius: 999, flexShrink: 0,
-            background: 'var(--status-ok-bg)', color: 'var(--status-ok-text)',
-          }}>
-            <span aria-hidden="true">🐸</span>
-            {t('strip_profile_frog_ease')}
-          </span>
-        </div>
+        {lastCheckedLabel && (
+          <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, color: 'var(--text-muted)', marginTop: 8 }}>
+            {t('dash_last_measured')} {lastCheckedLabel}
+          </div>
+        )}
       </div>
-    </button>
+    </Tag>
   )
 }
