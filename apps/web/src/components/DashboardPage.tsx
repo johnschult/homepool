@@ -307,18 +307,25 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
               onNavigate={onNavigate}
             />
 
-            <div className="card" style={{ padding: 16 }}>
-              <div className="section-title" style={{ marginBottom: 8 }}>{t('graph_ph_trend')}</div>
-              <TrendChart
-                points={phHistory}
-                idealMin={phRange.ideal[0]}
-                idealMax={phRange.ideal[1]}
-                acceptableMin={phRange.acceptable[0]}
-                acceptableMax={phRange.acceptable[1]}
-                height={150}
-                formatValue={v => v.toFixed(1)}
-                emptyLabel={t('graph_not_enough_data')}
-              />
+            {/* AttentionPanel next door is usually much taller (a list of
+                maintenance items) than this chart — grid row-stretch fills
+                this card to match it, so the chart is centered in the
+                leftover space below the title instead of pinned to the top
+                with a dead gap under it. */}
+            <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column' }}>
+              <div className="section-title" style={{ marginBottom: 8, flexShrink: 0 }}>{t('graph_ph_trend')}</div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <TrendChart
+                  points={phHistory}
+                  idealMin={phRange.ideal[0]}
+                  idealMax={phRange.ideal[1]}
+                  acceptableMin={phRange.acceptable[0]}
+                  acceptableMax={phRange.acceptable[1]}
+                  height={150}
+                  formatValue={v => v.toFixed(1)}
+                  emptyLabel={t('graph_not_enough_data')}
+                />
+              </div>
             </div>
           </div>
 

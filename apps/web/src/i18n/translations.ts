@@ -697,7 +697,7 @@ export const translations = {
     page_measurements_sub: 'Water quality parameter tracking',
     measurements_this_month: 'Measurements this month',
     measurements_records_saved: 'records saved',
-    measurements_ph_trend: 'pH trend',
+    measurements_ph_trend: 'pH change',
     measurements_stable: 'Stable',
     measurements_rising: 'Rising',
     measurements_falling: 'Falling',
