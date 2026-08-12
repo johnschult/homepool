@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import type { Action, Recommendation, RecommendationsResponse, TreatmentProduct } from '../types'
 import { PARAM_GUIDANCE } from '../paramGuidance'
 import { gramsToDisplay, mlToDisplay } from '../units'
+import { treatmentProductLabel } from '../utils'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import type { TranslationKey } from '../i18n/translations'
@@ -44,10 +45,15 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
   const [data, setData] = useState<RecommendationsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [showSimulator, setShowSimulator] = useState(false)
-  // Which dosage products this installation actually stocks. A recommendation
-  // only offers to log itself when one of them matches — otherwise the form
-  // would open on an empty product picker.
-  const [dosageProducts, setDosageProducts] = useState<Set<string>>(new Set())
+  // Which dosage products this installation actually stocks, mapped to that
+  // product's own label — a recommendation for "soda_ash" should read as
+  // whatever the user actually calls their pH increaser (its translated
+  // builtin label, or a custom name/brand they typed in), not the raw
+  // chemical name, once they have a matching product configured. Falls back
+  // to the generic chemical-name translation when there's no match, and a
+  // recommendation only offers to log itself when one exists — otherwise the
+  // form would open on an empty product picker.
+  const [dosageProducts, setDosageProducts] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
     if (!active) return
@@ -66,8 +72,10 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
       .then(r => (r.ok ? r.json() : []))
       .then((products: TreatmentProduct[]) => {
         if (cancelled || !Array.isArray(products)) return
-        setDosageProducts(new Set(
-          products.filter(p => p.enabled && p.dosage_product_id).map(p => p.dosage_product_id!)
+        setDosageProducts(new Map(
+          products
+            .filter(p => p.enabled && p.dosage_product_id)
+            .map(p => [p.dosage_product_id!, treatmentProductLabel(p, t)])
         ))
       })
       .catch(() => { /* no catalog, no log buttons — recommendations still read */ })
@@ -137,7 +145,7 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
 function RecommendationCard({ rec, onLogTreatment, dosageProducts }: {
   rec: Recommendation
   onLogTreatment?: (treatment: TreatmentPrefill) => void
-  dosageProducts: Set<string>
+  dosageProducts: Map<string, string>
 }) {
   const { t } = useT()
   const guidance = PARAM_GUIDANCE[rec.param]
@@ -172,7 +180,7 @@ function RecommendationCard({ rec, onLogTreatment, dosageProducts }: {
           }}>
             {opt.product_id && (
               <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
-                {t(`dosage_product_${opt.product_id}` as TranslationKey)}
+                {dosageProducts.get(opt.product_id) ?? t(`dosage_product_${opt.product_id}` as TranslationKey)}
               </div>
             )}
             {opt.amount_grams !== null && (
