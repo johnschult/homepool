@@ -300,19 +300,52 @@ const BAND_HARDNESS_BASE: BandParamBase = {
 
 // ── FROG @ease ────────────────────────────────────────────────────────────
 //
-// PLACEHOLDER — the swatch `bg` colors and per-pad `value` numbers below are
-// copied from the AquaChek tables above as a structural starting point and
-// have NOT been verified against a physical FROG @ease test strip bottle/
-// insert. FROG's indicator dyes are a different chemistry from AquaChek's and
-// will not read the same colors at the same pad values — these MUST be
-// corrected before this strip profile is trusted for real dosing decisions.
-// The ideal/acceptable zone BOUNDARIES (zoneDefs) are chemistry, not
-// brand-specific, and already match WATER_PARAMS' frog_smartchlor ph/tac/
-// hardness bands — those are safe to keep regardless of swatch-color
-// verification.
-const BAND_PH_FROG_BASE: BandParamBase = { ...BAND_PH_BASE }
-const BAND_TAC_FROG_BASE: BandParamBase = { ...BAND_TAC_BASE }
-const BAND_HARDNESS_FROG_BASE: BandParamBase = { ...BAND_HARDNESS_BASE }
+// Swatch colors and pad values below are read directly off a physical FROG
+// @ease test strip bottle/insert (not copied from AquaChek — FROG's indicator
+// dyes are a different chemistry and don't read the same colors at the same
+// pad values). The ideal/acceptable zone BOUNDARIES (zoneDefs) are chemistry,
+// not brand-specific, and are reused from the AquaChek tables' — they already
+// match WATER_PARAMS' frog_smartchlor ph/tac/hardness bands.
+const BAND_PH_FROG_BASE: BandParamBase = {
+  key: 'm_ph', labelKey: 'param_ph',
+  summaryFmt: v => `pH ${v.toFixed(1)}`,
+  swatches: [
+    { value: 6.2, bg: '#C46E2C', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 6.8, bg: '#B9523E', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 7.2, bg: '#D85E4F', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 7.6, bg: '#E55D55', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 8.0, bg: '#E95B5A', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 8.4, bg: '#EC5362', textColor: 'rgba(255,255,255,0.8)' },
+  ],
+  zoneDefs: BAND_PH_BASE.zoneDefs,
+}
+
+const BAND_TAC_FROG_BASE: BandParamBase = {
+  key: 'm_tac', labelKey: 'band_tac_alkalinity',
+  summaryFmt: v => `TAC ${v} mg/L`,
+  swatches: [
+    { value: 0,   bg: '#A88631', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 40,  bg: '#8C8131', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 80,  bg: '#72833A', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 120, bg: '#5E9C86', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 180, bg: '#51A8B1', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 240, bg: '#4EACB6', textColor: 'rgba(255,255,255,0.8)' },
+  ],
+  zoneDefs: BAND_TAC_BASE.zoneDefs,
+}
+
+const BAND_HARDNESS_FROG_BASE: BandParamBase = {
+  key: 'm_hardness', labelKey: 'param_hardness',
+  summaryFmt: v => `Hardness ${v} ppm`,
+  swatches: [
+    { value: 50,  bg: '#245D60', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 150, bg: '#294D6C', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 250, bg: '#394E86', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 450, bg: '#4C63AE', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 800, bg: '#583C98', textColor: 'rgba(255,255,255,0.8)' },
+  ],
+  zoneDefs: BAND_HARDNESS_BASE.zoneDefs,
+}
 
 function getBandParams(profile: StripProfileId, sanitizer: SanitizerType, t: (key: TranslationKey) => string): BandParam[] {
   if (profile === 'frog_ease') {
