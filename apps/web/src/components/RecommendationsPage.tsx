@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { PartyPopper } from 'lucide-react'
+import { PartyPopper, Info, TrendingUp, TrendingDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Action, Recommendation, RecommendationsResponse, TreatmentProduct } from '../types'
 import { PARAM_GUIDANCE } from '../paramGuidance'
@@ -130,14 +130,19 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
         </div>
       )}
 
-      {!loading && data && data.recommendations.map(rec => (
-        <RecommendationCard
-          key={rec.param}
-          rec={rec}
-          onLogTreatment={onLogTreatment}
-          dosageProducts={dosageProducts}
-        />
-      ))}
+      {/* Text-heavy cards read worse the wider they get — capped so lines of
+          prose stay a reasonable length instead of stretching edge to edge
+          on a wide viewport. */}
+      <div style={{ maxWidth: 640 }}>
+        {!loading && data && data.recommendations.map(rec => (
+          <RecommendationCard
+            key={rec.param}
+            rec={rec}
+            onLogTreatment={onLogTreatment}
+            dosageProducts={dosageProducts}
+          />
+        ))}
+      </div>
     </div>
   )
 }
@@ -175,28 +180,35 @@ function RecommendationCard({ rec, onLogTreatment, dosageProducts }: {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {rec.options.map((opt, i) => (
           <div key={i} style={{
-            display: 'flex', flexDirection: 'column', gap: 2,
-            padding: '8px 10px', borderRadius: 8, background: 'var(--bg-surface-2)',
+            display: 'flex', flexDirection: 'column', gap: 8,
+            padding: '10px 12px', borderRadius: 8, background: 'var(--bg-surface-2)',
           }}>
-            {opt.product_id && (
-              <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
-                {dosageProducts.get(opt.product_id) ?? t(`dosage_product_${opt.product_id}` as TranslationKey)}
+            {/* Name + amount share a row instead of stacking — the amount is
+                the number someone's actually here for, so it gets equal
+                billing with the product name rather than trailing below it. */}
+            {(opt.product_id || opt.amount_grams !== null || opt.amount_ml !== null) && (
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+                {opt.product_id && (
+                  <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {dosageProducts.get(opt.product_id) ?? t(`dosage_product_${opt.product_id}` as TranslationKey)}
+                  </div>
+                )}
+                {opt.amount_grams !== null && <AmountLine grams={opt.amount_grams} />}
+                {opt.amount_ml !== null && <AmountLine mL={opt.amount_ml} />}
               </div>
             )}
-            {opt.amount_grams !== null && (
-              <AmountLine grams={opt.amount_grams} />
-            )}
-            {opt.amount_ml !== null && (
-              <AmountLine mL={opt.amount_ml} />
-            )}
-            {opt.notes_key && (
-              <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)' }}>
-                {t(opt.notes_key as TranslationKey)}
+
+            {/* Caveat + side-effect as compact icon chips, wrapping onto a
+                second line on narrow screens, instead of two stacked
+                full-width paragraphs that read as one undifferentiated
+                block of gray text. */}
+            {(opt.notes_key || opt.side_effect) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {opt.notes_key && <InfoChip icon={Info} text={t(opt.notes_key as TranslationKey)} />}
+                {opt.side_effect && <SideEffectChip side={opt.side_effect} />}
               </div>
             )}
-            {opt.side_effect && (
-              <SideEffectLine side={opt.side_effect} />
-            )}
+
             {onLogTreatment && opt.product_id && dosageProducts.has(opt.product_id) && (
               <LogTreatmentButton
                 productId={opt.product_id}
@@ -234,7 +246,7 @@ function LogTreatmentButton({ productId, grams, mL, onLogTreatment }: {
     <button
       type="button"
       className="btn-ghost"
-      style={{ alignSelf: 'flex-start', marginTop: 4, fontSize: 11, padding: '4px 8px' }}
+      style={{ alignSelf: 'flex-start', fontSize: 11, padding: '4px 8px' }}
       onClick={() => onLogTreatment({
         dosage_product_id: productId,
         qty: display ? String(display.value) : undefined,
@@ -246,17 +258,35 @@ function LogTreatmentButton({ productId, grams, mL, onLogTreatment }: {
   )
 }
 
+// A compact icon + short text pill — replaces what used to be a full-width
+// paragraph line, so several of these read as distinct labeled facts instead
+// of one continuous block of gray prose.
+function InfoChip({ icon: Icon, text }: { icon: typeof Info; text: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 5,
+      fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)',
+      background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
+      borderRadius: 999, padding: '3px 9px 3px 7px',
+    }}>
+      <Icon size={11} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0 }} />
+      {text}
+    </div>
+  )
+}
+
 // A product's secondary-parameter shift (issue #40): the translated caveat plus the
-// signed estimate. pH shifts carry no unit; everything else is ppm.
-function SideEffectLine({ side }: { side: NonNullable<Recommendation['options'][number]['side_effect']> }) {
+// signed estimate. pH shifts carry no unit; everything else is ppm. Direction of the
+// shift (up/down) gets its own icon rather than a leading +/- sign buried in prose.
+function SideEffectChip({ side }: { side: NonNullable<Recommendation['options'][number]['side_effect']> }) {
   const { t } = useT()
-  const sign = side.delta >= 0 ? '+' : '−'
-  const magnitude = Math.abs(side.delta)
+  const raises = side.delta >= 0
   const unit = side.param === 'ph' ? '' : ' ppm'
   return (
-    <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)' }}>
-      {t(side.notes_key as TranslationKey)} ({sign}{magnitude}{unit})
-    </div>
+    <InfoChip
+      icon={raises ? TrendingUp : TrendingDown}
+      text={`${t(side.notes_key as TranslationKey)} (${raises ? '+' : '−'}${Math.abs(side.delta)}${unit})`}
+    />
   )
 }
 
