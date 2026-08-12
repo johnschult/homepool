@@ -274,6 +274,11 @@ button {
   color: var(--text-primary);
 }
 
+.sidebar-add-installation:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .sidebar-nav-item.active {
   background: var(--accent-dim);
   border-left: 2px solid var(--accent);

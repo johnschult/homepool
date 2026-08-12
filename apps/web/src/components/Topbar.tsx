@@ -124,7 +124,7 @@ const NAV_ITEMS: { page: Page; labelKey: 'nav_log' | 'nav_measurements' | 'nav_h
   { page: 'recommendations', labelKey: 'nav_recommendations', Icon: ClipboardList },
 ]
 
-export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInstallation, onEditInstallation, page = 'log', onNavigate, user, theme = 'auto', setTheme }: Props) {
+export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInstallation, onEditInstallation, page = 'log', onNavigate, theme = 'auto', setTheme }: Props) {
   const { installations, active, setActive, deleteInstallation, isOwner } = useInstallation()
   const { t, locale, setLocale } = useT()
 
@@ -132,12 +132,6 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
   // with zero installations — only Dashboard (page 'log') is usable until
   // the user adds their first pool or spa.
   const hasInstallations = installations.length > 0
-
-  const installationLabel = active?.type === 'spa'
-    ? t('my_spa')
-    : active?.type === 'pool'
-    ? t('my_pool')
-    : t('my_installation')
 
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -169,43 +163,43 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
     <>
       {/* ── Desktop sidebar ─────────────────────────────────── */}
       <aside className="sidebar">
-        {/* Logo */}
-        <div style={{
-          padding: '0 16px 16px',
-          borderBottom: '1px solid var(--border-subtle)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-        }}>
+        {/* Logo — doubles as a "go to Dashboard" shortcut, matching the
+            convention of clicking a logo to return home. */}
+        <button
+          type="button"
+          onClick={() => onNavigate?.('log')}
+          aria-label={t('nav_log')}
+          style={{
+            padding: '0 16px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            background: 'none',
+            border: 'none',
+            borderBottom: '1px solid var(--border-subtle)',
+            cursor: 'pointer',
+            width: '100%',
+            textAlign: 'left',
+          }}
+        >
           <img
             src={homepoolSidebarLogo}
-            alt="homepool"
+            alt=""
             width={32}
             height={32}
             style={{ flexShrink: 0 }}
           />
-          <div>
-            <div style={{
-              fontSize: 16,
-              fontWeight: 700,
-              letterSpacing: '-0.02em',
-              lineHeight: 1,
-              fontFamily: 'Sora, sans-serif',
-            }}>
-              <span style={{ color: 'var(--text-primary)' }}>home</span>
-              <span style={{ color: 'var(--accent)' }}>pool</span>
-            </div>
-            <div style={{
-              fontSize: 9,
-              color: 'var(--text-muted)',
-              fontFamily: "'IBM Plex Mono', monospace",
-              marginTop: 3,
-              letterSpacing: '0.04em',
-            }}>
-              {user?.first_name ? `${t('hello')} ${user.first_name.toUpperCase()}` : installationLabel}
-            </div>
+          <div style={{
+            fontSize: 16,
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+            lineHeight: 1,
+            fontFamily: 'Sora, sans-serif',
+          }}>
+            <span style={{ color: 'var(--text-primary)' }}>home</span>
+            <span style={{ color: 'var(--accent)' }}>pool</span>
           </div>
-        </div>
+        </button>
 
         {/* Nav */}
         <nav className="sidebar-nav">
@@ -238,11 +232,17 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
 
         {/* Footer: installation + preferences + profile */}
         <div className="sidebar-footer">
-          {/* Installation selector */}
+          {/* Installation selector — its own visually distinct card, not just
+              another row in the footer stack, since switching/managing
+              installations is a much more frequent action than the
+              preferences/account rows below it. */}
           {installations.length > 0 && (
-            <div style={{ padding: '2px 0 6px' }}>
+            <div style={{
+              padding: '10px 12px', margin: '0 0 6px', borderRadius: 'var(--radius-md)',
+              background: 'var(--bg-surface-2)', border: '1px solid var(--border-subtle)',
+            }}>
               {installations.length === 1 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, padding: '0 12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <InstallationIcon size={14} strokeWidth={1.75} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                     <span style={{ fontFamily: 'Sora, sans-serif', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
@@ -288,7 +288,7 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
                   )}
                 </div>
               ) : (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '0 12px' }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <select
                     value={active?.id ?? ''}
                     onChange={e => setActive(Number(e.target.value))}
@@ -341,13 +341,16 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
               )}
               {onAddInstallation && (
                 <button
+                  className="sidebar-add-installation"
                   onClick={onAddInstallation}
                   style={{
-                    marginTop: 4, width: '100%', background: 'none', border: 'none',
-                    fontFamily: 'Sora, sans-serif', fontSize: 10, color: 'var(--text-muted)',
-                    cursor: 'pointer', textAlign: 'left', padding: '2px 12px',
+                    marginTop: 8, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                    background: 'var(--bg-surface)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)',
+                    fontFamily: 'Sora, sans-serif', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)',
+                    cursor: 'pointer', padding: '6px 10px', transition: 'border-color 0.15s, color 0.15s',
                   }}
                 >
+                  <Plus size={12} strokeWidth={2} aria-hidden="true" />
                   {t('nav_add_installation')}
                 </button>
               )}
