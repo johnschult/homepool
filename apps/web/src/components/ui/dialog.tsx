@@ -53,6 +53,14 @@ const DialogContent = React.forwardRef<
         className
       )}
       style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+      // A stray click on the overlay must not silently discard whatever the
+      // user was mid-typing in a form dialog — every dialog in the app closes
+      // only via its own Cancel/Save/X, not an accidental outside click.
+      // Escape is left alone: unlike a misplaced click, it's a deliberate
+      // dismiss action. Callers can still opt back into outside-click-to-close
+      // by passing their own onPointerDownOutside/onInteractOutside.
+      onPointerDownOutside={(e) => e.preventDefault()}
+      onInteractOutside={(e) => e.preventDefault()}
       {...props}
     >
       {children}

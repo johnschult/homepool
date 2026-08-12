@@ -15,6 +15,43 @@ from models import Action, Installation, MaintenanceTask, TreatmentProduct
 
 MEASURE_ACTION_TYPES = {"pH Measurement", "Measurement"}
 
+# Capability flags per sanitizer, keyed the same way WATER_PARAMS/
+# _SANITIZER_TREATMENTS are (plain string, no enum — see repo convention).
+# Consumers use this instead of scattering `if sanitizer == "frog_smartchlor"`
+# checks throughout the codebase.
+SANITIZER_CAPABILITIES: Dict[str, Dict[str, bool]] = {
+    "chlorine": {
+        "requires_numeric_free_chlorine": True,
+        "supports_free_chlorine_target": True,
+        "supports_chlorine_dose_recommendation": True,
+        "supports_smartchlor_status": False,
+    },
+    "bromine": {
+        "requires_numeric_free_chlorine": False,
+        "supports_free_chlorine_target": False,
+        "supports_chlorine_dose_recommendation": False,
+        "supports_smartchlor_status": False,
+    },
+    "salt": {
+        "requires_numeric_free_chlorine": True,
+        "supports_free_chlorine_target": True,
+        "supports_chlorine_dose_recommendation": True,
+        "supports_smartchlor_status": False,
+    },
+    "frog_smartchlor": {
+        "requires_numeric_free_chlorine": False,
+        "supports_free_chlorine_target": False,
+        "supports_chlorine_dose_recommendation": False,
+        "supports_smartchlor_status": True,
+    },
+}
+
+
+def sanitizer_capabilities(sanitizer: str) -> Dict[str, bool]:
+    """Unknown sanitizer falls back to chlorine's, matching
+    default_treatment_products' existing fallback doctrine."""
+    return SANITIZER_CAPABILITIES.get(sanitizer, SANITIZER_CAPABILITIES["chlorine"])
+
 # The action_type every treatment is stored under. It predates the treatment
 # catalog (it used to be a maintenance task, "Add product"), and keeping the
 # string means every treatment ever logged stays classified as one — see
@@ -70,6 +107,16 @@ _PURGE = {
     "action_types": ["Purge"],
     "icon": "mdi:pipe-valve",
 }
+# One FROG @ease strip reads pH/TA/hardness/SmartChlor together, so a
+# frog_smartchlor installation gets this in place of the plain pH task rather
+# than offering both (they'd be redundant — same physical strip, same
+# interval). See default_maintenance_tasks.
+_FROG_STRIP_CHECK = {
+    "builtin_key": "frog_strip_check",
+    "label": "Test water (FROG strip)",
+    "action_types": ["Measurement", "pH Measurement"],
+    "icon": "mdi:test-tube",
+}
 
 DEFAULT_MAINTENANCE_TASKS: Dict[str, List[Dict]] = {
     "pool": [
@@ -94,10 +141,16 @@ DEFAULT_MAINTENANCE_TASKS: Dict[str, List[Dict]] = {
 RETIRED_MAINTENANCE_BUILTIN_KEYS = {"product_addition"}
 
 
-def default_maintenance_tasks(installation_type: str) -> List[Dict]:
-    """Default task specs to seed a new installation of the given type with.
-    Falls back to the pool set for unknown types."""
-    return [dict(spec) for spec in DEFAULT_MAINTENANCE_TASKS.get(installation_type, DEFAULT_MAINTENANCE_TASKS["pool"])]
+def default_maintenance_tasks(installation_type: str, sanitizer: str = "") -> List[Dict]:
+    """Default task specs to seed a new installation of the given type (and,
+    for frog_smartchlor, sanitizer) with. Falls back to the pool set for
+    unknown types."""
+    specs = [dict(spec) for spec in DEFAULT_MAINTENANCE_TASKS.get(installation_type, DEFAULT_MAINTENANCE_TASKS["pool"])]
+    if sanitizer == "frog_smartchlor":
+        for spec in specs:
+            if spec["builtin_key"] == "ph_measurement":
+                spec.update({**_FROG_STRIP_CHECK, "interval_days": spec["interval_days"]})
+    return specs
 
 
 # ── Default treatment catalog ──────────────────────────────────────────────
@@ -130,6 +183,14 @@ _COMMON_TREATMENTS: List[Dict] = [
     {"builtin_key": "filter_cleaner", "label": "Filter cleaner", "icon": "mdi:air-filter",
      "default_unit": "ml"},
 ]
+
+# FROG @ease's own recommended spa routine (Jump Start oxidizer, TArget/JumpH/
+# DropH/SooTHe balancers, Galaxy Clarifier, filter cleaning) has no analogue
+# for algaecide or metal/scale sequestrant: the mineral+SmartChlor combo
+# already covers what algaecide would otherwise be for, and sequestrant is
+# only ever needed with specific fill water — not a core default. Source:
+# frogproducts.com's own @ease water-care guidance (retrieved 2026-08).
+_COMMON_TREATMENTS_EXCLUDED_FOR_FROG = {"algaecide", "metal_sequestrant"}
 
 # Flocculant drops debris to the floor to be vacuumed — a pool procedure; a spa
 # gets an anti-foam instead, which pools essentially never need.
@@ -168,6 +229,15 @@ _SANITIZER_TREATMENTS: Dict[str, List[Dict]] = {
         _CHLORINE_SHOCK,
         _STABILIZER,
     ],
+    # FROG @ease systems don't dose chlorine at all — the SmartChlor cartridge
+    # is a swap-out consumable, not a metered product, so neither has a
+    # `param`/`dosage_product_id` link (same as algaecide/clarifier below).
+    "frog_smartchlor": [
+        {"builtin_key": "smartchlor_cartridge", "label": "SmartChlor cartridge", "icon": "mdi:battery-sync",
+         "default_unit": "cap"},
+        {"builtin_key": "mineral_cartridge", "label": "Mineral cartridge", "icon": "mdi:diamond-stone",
+         "default_unit": "cap"},
+    ],
 }
 
 
@@ -178,7 +248,11 @@ def default_treatment_products(installation_type: str, sanitizer: str) -> List[D
     to the pool/chlorine set."""
     type_extras = _SPA_TREATMENTS if installation_type == "spa" else _POOL_TREATMENTS
     sanitizer_set = _SANITIZER_TREATMENTS.get(sanitizer, _SANITIZER_TREATMENTS["chlorine"])
-    return [dict(spec) for spec in [*sanitizer_set, *_COMMON_TREATMENTS, *type_extras]]
+    common = (
+        [t for t in _COMMON_TREATMENTS if t["builtin_key"] not in _COMMON_TREATMENTS_EXCLUDED_FOR_FROG]
+        if sanitizer == "frog_smartchlor" else _COMMON_TREATMENTS
+    )
+    return [dict(spec) for spec in [*sanitizer_set, *common, *type_extras]]
 
 
 def treatment_product_key(product: TreatmentProduct) -> str:
@@ -343,8 +417,18 @@ def extract_current_conditions(
     """Newest-first scan across actions; first match per field wins. Returns
     {field: {"value": float, "date": date, "unit": Optional[str]}} for each
     field that has a value. `unit` is None for every field if `installation`
-    isn't provided."""
+    isn't provided.
+
+    A sanitizer that doesn't track a numeric free-chlorine target
+    (frog_smartchlor, and bromine, which already never gets a "cl" WATER_PARAMS
+    band) must never surface a *stale* chlorine reading left over from before a
+    sanitizer switch, no matter how recent the action — so "chlorine" is
+    skipped entirely for those installations rather than just going unused."""
     units = field_units(installation) if installation else {}
+    capabilities = sanitizer_capabilities(installation.sanitizer) if installation else None
+    tracks_chlorine = capabilities is None or (
+        capabilities["requires_numeric_free_chlorine"] or capabilities["supports_free_chlorine_target"]
+    )
     sorted_actions = sorted(actions, key=lambda a: a.date, reverse=True)
     result: Dict[str, Dict] = {}
     for action in sorted_actions:
@@ -353,10 +437,22 @@ def extract_current_conditions(
         for field in FIELDS:
             if field in result:
                 continue
+            if field == "chlorine" and not tracks_chlorine:
+                continue
             v = _parse_field(field, action)
             if v is not None:
                 result[field] = {"value": v, "date": action.date, "unit": units.get(field)}
     return result
+
+
+def extract_current_smartchlor_status(actions: List[Action]) -> Optional[Dict]:
+    """Newest-first scan for the most recent logged SmartChlor cartridge
+    status. Returns {"status": "ok"|"out", "date": date} or None if never
+    checked."""
+    for action in sorted(actions, key=lambda a: a.date, reverse=True):
+        if action.action_type in MEASURE_ACTION_TYPES and action.smartchlor_status in ("ok", "out"):
+            return {"status": action.smartchlor_status, "date": action.date}
+    return None
 
 
 def history_kind(action_type: str) -> str:
@@ -414,6 +510,8 @@ def extract_history(
         }
         if kind == "measurement":
             entry.update(parse_measurement_action(action))
+            entry["strip_profile"] = action.strip_profile
+            entry["smartchlor_status"] = action.smartchlor_status
         history.append(entry)
     return history
 

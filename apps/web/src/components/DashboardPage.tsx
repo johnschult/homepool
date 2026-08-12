@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTriangle, ChevronRight, Droplets, Check } from 'lucide-react'
+import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTriangle, ChevronRight, Droplets, Check, LineChart, History, Waves, Gem, Thermometer, Droplet, Snowflake, Shield, type LucideIcon } from 'lucide-react'
 import type { Action, Product, RecommendationsResponse, MaintenanceTask } from '../types'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
@@ -8,6 +8,7 @@ import TrendChart from './TrendChart'
 import {
   PARAM_RANGES,
   extractMeasuredParams,
+  extractSmartChlorStatus,
   getPhStatus,
   getChlorineStatus,
   getBromineStatus,
@@ -21,12 +22,16 @@ import {
   getChemistryTodoItems,
   maintenanceTodoItems,
   translateLabel,
+  stripMeasurementNotes,
+  MEASURE_ACTION_TYPES,
   type TodoItem,
   type ParamStatus,
   type HistoryParamKey,
   type DynamicRanges,
 } from '../utils'
 import { ACTION_TYPE_LABELS } from './ActionForm'
+import { sanitizerCapabilities } from '../sanitizer'
+import SmartChlorCard from './SmartChlorCard'
 
 function formatDateLong(d: Date, locale: Locale): string {
   return d.toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-GB', {
@@ -45,6 +50,23 @@ function statusColor(s: ParamStatus): string {
   return 'var(--status-danger-text)'
 }
 
+const sectionTitleRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+}
+
+const TILE_ICON: Record<string, LucideIcon> = {
+  ph: FlaskConical,
+  tac: Waves,
+  hardness: Gem,
+  temp: Thermometer,
+  chlorine: Droplet,
+  bromine: Droplets,
+  salt: Snowflake,
+  stabilizer: Shield,
+}
+
 type Props = {
   actions: Action[]
   products: Product[]
@@ -55,6 +77,10 @@ type Props = {
   onImport?: (file: File) => Promise<void>
   onNavigate?: (page: 'measurements' | 'history' | 'recommendations' | 'maintenance') => void
   onAdd?: () => void
+  /** Present only when the account has zero installations — swaps the empty
+   * state's prompt from "log a measurement" to "add a pool/spa", since there
+   * is nothing yet to log a measurement against. */
+  onAddInstallation?: () => void
 }
 
 type TileDef = {
@@ -68,14 +94,15 @@ type TileDef = {
   format: (v: number) => string
 }
 
-export default function DashboardPage({ actions, products: _products, onEdit, onDelete, onExport, onImport, onNavigate, onAdd }: Props) {
+export default function DashboardPage({ actions, products: _products, onEdit, onDelete, onExport, onImport, onNavigate, onAdd, onAddInstallation }: Props) {
   const { active, ranges } = useInstallation()
   const { t, locale } = useT()
   const sanitizer = active?.sanitizer ?? 'chlorine'
 
   const today = new Date()
 
-  const params = useMemo(() => extractMeasuredParams(actions), [actions])
+  const params = useMemo(() => extractMeasuredParams(actions, sanitizer), [actions, sanitizer])
+  const smartChlor = useMemo(() => extractSmartChlorStatus(actions), [actions])
   const phHistory = useMemo(() => getParamHistory(actions, 'ph', 12), [actions])
 
   const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([])
@@ -150,7 +177,10 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         status: params.chlorine !== null ? getChlorineStatus(params.chlorine, ranges ?? undefined) : null,
         historyKey: 'chlorine', range: r('chlorine'), format: v => v.toFixed(1),
       })
-    } else {
+    } else if (sanitizerCapabilities(sanitizer).supportsFreeChlorineTarget) {
+      // frog_smartchlor falls through here with no tile: it has no numeric FC
+      // target, so nothing is pushed — see the SmartChlorCard rendered
+      // alongside this tile grid instead.
       defs.push({
         key: 'chlorine', label: t('param_chlorine'),
         value: params.chlorine !== null ? params.chlorine.toFixed(1) : '—', unit: concUnit,
@@ -164,12 +194,18 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
       status: params.tac !== null ? getTacStatus(params.tac, ranges ?? undefined) : null,
       historyKey: 'tac', range: r('tac'), format: v => String(Math.round(v)),
     })
-    defs.push({
-      key: 'temp', label: t('param_temp_label'),
-      value: params.temp !== null ? params.temp.toFixed(1) : '—', unit: `°${active?.temp_unit ?? 'C'}`,
-      status: params.temp !== null ? getTempStatus(params.temp, ranges ?? undefined) : null,
-      historyKey: 'temp', range: r('temp'), format: v => v.toFixed(1),
-    })
+    // Unlike pH/TAC/hardness, temperature usually isn't on a test strip at
+    // all — plenty of installations never log it. An ever-empty "—" tile for
+    // a param nobody tracks is just dead weight, so it only shows up once
+    // there's an actual value to display.
+    if (params.temp !== null) {
+      defs.push({
+        key: 'temp', label: t('param_temp_label'),
+        value: params.temp.toFixed(1), unit: `°${active?.temp_unit ?? 'C'}`,
+        status: getTempStatus(params.temp, ranges ?? undefined),
+        historyKey: 'temp', range: r('temp'), format: v => v.toFixed(1),
+      })
+    }
     if (ranges?.stabilizer) {
       defs.push({
         key: 'stabilizer', label: t('guidance_cya_label'),
@@ -204,12 +240,12 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         </div>
         <div className="page-header-actions">
           {onExport && (
-            <button className="btn-ghost" onClick={onExport} title={t('export_label')} aria-label={t('export_label')} style={{ padding: '7px 9px' }}>
+            <button className="btn-ghost" onClick={onExport} title={t('export_label')} aria-label={t('export_label')} style={{ height: 32, padding: '0 9px' }}>
               <Download size={15} strokeWidth={1.75} />
             </button>
           )}
           {onImport && (
-            <label className="btn-ghost" title={t('import_label')} aria-label={t('import_label')} style={{ padding: '7px 9px' }}>
+            <label className="btn-ghost" title={t('import_label')} aria-label={t('import_label')} style={{ height: 32, padding: '0 9px' }}>
               <Upload size={15} strokeWidth={1.75} />
               <input
                 type="file"
@@ -223,7 +259,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
             </label>
           )}
           {onAdd && (
-            <button className="btn-primary" onClick={onAdd}>
+            <button className="btn-primary" onClick={onAdd} style={{ height: 32, padding: '0 14px' }}>
               <Plus size={15} strokeWidth={2} />
               {t('nav_new_entry_aria')}
             </button>
@@ -231,10 +267,27 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         </div>
       </div>
 
-      {actions.length === 0 ? (
-        /* ── Empty state ─────────────────────────────────────────────────── */
+      {!active ? (
+        /* ── Empty state: no installation at all ───────────────────────────── */
+        <div className="card" style={{ padding: '48px 24px', textAlign: 'center', maxWidth: 420, margin: '48px auto' }}>
+          <Droplets size={28} strokeWidth={1.5} style={{ display: 'block', margin: '0 auto 12px', color: 'var(--accent)' }} aria-hidden="true" />
+          <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
+            {t('onboarding_title')}
+          </div>
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-secondary)', margin: '6px auto 20px', maxWidth: 340 }}>
+            {t('onboarding_sub')}
+          </p>
+          {onAddInstallation && (
+            <button className="btn-primary" onClick={onAddInstallation}>
+              <Plus size={15} strokeWidth={2} />
+              {t('onboarding_add_button')}
+            </button>
+          )}
+        </div>
+      ) : actions.length === 0 ? (
+        /* ── Empty state: installation exists, nothing logged yet ─────────── */
         <div className="card" style={{ padding: '48px 24px', textAlign: 'center' }}>
-          <Droplets size={28} strokeWidth={1.5} style={{ color: 'var(--accent)', marginBottom: 12 }} aria-hidden="true" />
+          <Droplets size={28} strokeWidth={1.5} style={{ display: 'block', margin: '0 auto 12px', color: 'var(--accent)' }} aria-hidden="true" />
           <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
             {t('dash_empty_title')}
           </div>
@@ -255,6 +308,14 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
             {tiles.map(tile => (
               <ParamTile key={tile.key} tile={tile} actions={actions} onClick={() => onNavigate?.('measurements')} />
             ))}
+            {sanitizerCapabilities(sanitizer).supportsSmartChlorStatus && (
+              <SmartChlorCard
+                variant="tile"
+                status={smartChlor?.status ?? null}
+                lastCheckedDate={smartChlor?.date ?? null}
+                onClick={() => onNavigate?.('measurements')}
+              />
+            )}
           </div>
 
           {/* ── Attention + trend ───────────────────────────────────────────── */}
@@ -265,25 +326,38 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
               onNavigate={onNavigate}
             />
 
-            <div className="card" style={{ padding: 16 }}>
-              <div className="section-title" style={{ marginBottom: 8 }}>{t('graph_ph_trend')}</div>
-              <TrendChart
-                points={phHistory}
-                idealMin={phRange.ideal[0]}
-                idealMax={phRange.ideal[1]}
-                acceptableMin={phRange.acceptable[0]}
-                acceptableMax={phRange.acceptable[1]}
-                height={150}
-                formatValue={v => v.toFixed(1)}
-                emptyLabel={t('graph_not_enough_data')}
-              />
+            {/* AttentionPanel next door is usually much taller (a list of
+                maintenance items) than this chart — grid row-stretch fills
+                this card to match it, so the chart is centered in the
+                leftover space below the title instead of pinned to the top
+                with a dead gap under it. */}
+            <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column' }}>
+              <div className="section-title" style={{ ...sectionTitleRow, marginBottom: 8, flexShrink: 0 }}>
+                <LineChart size={13} strokeWidth={1.75} aria-hidden="true" />
+                {t('graph_ph_trend')}
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <TrendChart
+                  points={phHistory}
+                  idealMin={phRange.ideal[0]}
+                  idealMax={phRange.ideal[1]}
+                  acceptableMin={phRange.acceptable[0]}
+                  acceptableMax={phRange.acceptable[1]}
+                  height={150}
+                  formatValue={v => v.toFixed(1)}
+                  emptyLabel={t('graph_not_enough_data')}
+                />
+              </div>
             </div>
           </div>
 
           {/* ── Recent activity ─────────────────────────────────────────────── */}
           <div className="card" style={{ padding: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div className="section-title" style={{ margin: 0 }}>{t('table_recent_history')}</div>
+              <div className="section-title" style={{ ...sectionTitleRow, margin: 0 }}>
+                <History size={13} strokeWidth={1.75} aria-hidden="true" />
+                {t('table_recent_history')}
+              </div>
               <button
                 onClick={() => onNavigate?.('history')}
                 style={{
@@ -324,7 +398,12 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
                       <ActionParamPills action={action} />
                     </td>
                     <td className="history-col-notes" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {action.notes || '—'}
+                      {/* Measurement notes carry auto-generated "TAC: 80.
+                          hardness: 250" text (see ActionForm's buildPayload)
+                          alongside whatever the user actually typed — strip
+                          it here too, or a measurement with no real notes
+                          looks like it has some. */}
+                      {(MEASURE_ACTION_TYPES.includes(action.action_type) ? stripMeasurementNotes(action.notes) : action.notes) || '—'}
                     </td>
                     <td style={{ width: 56 }}>
                       <div className="row-actions" style={{ display: 'flex', gap: 2, opacity: hoveredRowId === action.id ? 1 : 0, transition: 'opacity 0.15s' }}>
@@ -371,6 +450,7 @@ function ParamTile({ tile, actions, onClick }: { tile: TileDef; actions: Action[
     [actions, tile.historyKey],
   )
   const rail = tile.status !== null ? statusColor(tile.status) : 'var(--border)'
+  const Icon = TILE_ICON[tile.key] ?? FlaskConical
   return (
     <button
       className="param-tile"
@@ -378,7 +458,8 @@ function ParamTile({ tile, actions, onClick }: { tile: TileDef; actions: Action[
       style={{ '--tile-rail': rail, opacity: hasData ? 1 : 0.6 } as React.CSSProperties}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <Icon size={12} strokeWidth={1.75} aria-hidden="true" style={{ flexShrink: 0 }} />
           {tile.label}
         </span>
         {tile.status !== null && (
@@ -432,7 +513,10 @@ function AttentionPanel({
 
   return (
     <div className="card" style={{ padding: 16 }}>
-      <div className="section-title" style={{ marginBottom: 12 }}>{t('attention_title')}</div>
+      <div className="section-title" style={{ ...sectionTitleRow, marginBottom: 12 }}>
+        <AlertTriangle size={13} strokeWidth={1.75} aria-hidden="true" />
+        {t('attention_title')}
+      </div>
 
       {isEmpty ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--status-ok-text)', fontFamily: '"Sora", sans-serif', fontSize: 13, padding: '8px 0' }}>
@@ -440,7 +524,12 @@ function AttentionPanel({
           {t('attention_all_ok')}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        // Bounded height with internal scroll — this list grows with however
+        // many maintenance tasks/recommendations are outstanding, and it sits
+        // next to the pH trend chart (a fixed ~150px). Without a cap, more
+        // overdue tasks would keep pulling the two cards further out of sync
+        // instead of just scrolling within its own card.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 220, overflowY: 'auto' }}>
           {todoItems.map(item => {
             const Icon = KIND_ICON[item.kind]
             const color = item.isOverdue ? 'var(--status-danger-text)' : 'var(--status-warn-text)'
@@ -531,7 +620,8 @@ function ActionTypeBadge({ actionType }: { actionType: string }) {
 
 function ActionParamPills({ action }: { action: Action }) {
   const { active, ranges } = useInstallation()
-  const p = extractMeasuredParams([action])
+  const { t } = useT()
+  const p = extractMeasuredParams([action], active?.sanitizer)
   const pills: Array<{ label: string; color: string; bg: string }> = []
   const styleMap = {
     normal: { color: 'var(--status-ok-text)',     bg: 'var(--status-ok-bg)'     },
@@ -553,6 +643,15 @@ function ActionParamPills({ action }: { action: Action }) {
   if (p.temp !== null) {
     const s = getTempStatus(p.temp, ranges ?? undefined)
     pills.push({ label: `T° ${p.temp.toFixed(1)} °${active?.temp_unit ?? 'C'}`, ...styleMap[s] })
+  }
+  if (p.hardness !== null) {
+    const s = getHardnessStatus(p.hardness, ranges ?? undefined)
+    pills.push({ label: `${t('param_hardness_short')} ${Math.round(p.hardness)} ${active?.hardness_unit ?? 'ppm'}`, ...styleMap[s] })
+  }
+  if (action.smartchlor_status === 'ok' || action.smartchlor_status === 'out') {
+    pills.push(action.smartchlor_status === 'ok'
+      ? { label: t('smartchlor_ok'), ...styleMap.normal }
+      : { label: t('smartchlor_out'), ...styleMap.bad })
   }
   if (pills.length === 0) {
     return <span style={{ color: 'var(--text-muted)', fontFamily: '"IBM Plex Mono", monospace', fontSize: 10 }}>—</span>

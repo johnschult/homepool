@@ -11,6 +11,7 @@ import { displayToMetricConverter, gramsToDisplay, mlToDisplay } from '../units'
 import { extractMeasuredParams, type MeasuredParams } from '../utils'
 import type { Action, DosageOption, Installation, InstallationWaterParams, ParamBand, ParamKey } from '../types'
 import type { TranslationKey } from '../i18n/translations'
+import type { SanitizerType } from '../sanitizer'
 
 // Params dosage.py's TREATMENT_TABLE has actionable guidance for -- cc and temp are
 // deliberately absent, same as the real Recommendations page.
@@ -223,7 +224,7 @@ function DosageTab({
 }: {
   installationVolume?: number
   volumeUnit: 'L' | 'gal'
-  sanitizer: 'bromine' | 'chlorine' | 'salt'
+  sanitizer: SanitizerType
   concUnit: string
   waterParams: InstallationWaterParams | null
   measured: MeasuredParams

@@ -9,7 +9,7 @@ import {
   isOnDemandTask,
 } from '../utils'
 import { TaskIcon } from '../taskIcons'
-import type { EntryKind } from './ActionForm'
+import type { EntryKind, TreatmentPrefill } from './ActionForm'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import MaintenanceConfig from './MaintenanceConfig'
@@ -52,8 +52,11 @@ type Props = {
   onActionLogged?: () => void
   /** Opens the entry form. Tasks whose completion carries data — a measurement
    * — hand off to the form instead of logging an empty row, so there is exactly
-   * one way to record them (issue #51). */
-  onLogEntry?: (kind: EntryKind, actionType?: string) => void
+   * one way to record them (issue #51). The 4th arg is the triggering task's
+   * builtin_key, so the form can require a task-specific field (e.g. the FROG
+   * strip check requires a SmartChlor status) on top of the ordinary "fill in
+   * something" rule ad hoc entries keep — see TASK_REQUIRED_MEASUREMENT. */
+  onLogEntry?: (kind: EntryKind, actionType?: string, treatment?: TreatmentPrefill, triggeringTaskKey?: string) => void
 }
 
 export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
@@ -82,7 +85,7 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
   const markDone = async (task: MaintenanceTask) => {
     if (!active) return
     if (onLogEntry && isMeasurementTask(task)) {
-      onLogEntry('measurement')
+      onLogEntry('measurement', undefined, undefined, task.builtin_key ?? undefined)
       return
     }
     setBusyId(task.id)
@@ -115,7 +118,7 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
         </div>
         {isOwner && (
           <div className="page-header-actions">
-            <Button type="button" variant="outline" onClick={() => setShowConfig(true)}>
+            <Button type="button" variant="outline" size="xs" onClick={() => setShowConfig(true)}>
               {t('maint_configure')}
             </Button>
           </div>

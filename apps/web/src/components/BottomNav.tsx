@@ -7,10 +7,14 @@ type Props = {
   page: Page
   onNavigate: (p: Page) => void
   onAdd: () => void
+  /** False once the account has zero installations — only Dashboard ('log')
+   * stays usable until the user adds their first pool or spa. */
+  hasInstallations?: boolean
 }
 
-export default function BottomNav({ page, onNavigate, onAdd }: Props) {
+export default function BottomNav({ page, onNavigate, onAdd, hasInstallations = true }: Props) {
   const { t } = useT()
+  const disabled = !hasInstallations
   return (
     <nav className="bottom-nav">
       <button
@@ -24,6 +28,8 @@ export default function BottomNav({ page, onNavigate, onAdd }: Props) {
       <button
         className={`bn-item${page === 'measurements' ? ' active' : ''}`}
         onClick={() => onNavigate('measurements')}
+        disabled={disabled}
+        aria-disabled={disabled}
       >
         <Activity size={20} strokeWidth={1.75} aria-hidden="true" />
         {t('nav_measurements')}
@@ -36,6 +42,8 @@ export default function BottomNav({ page, onNavigate, onAdd }: Props) {
       <button
         className={`bn-item${page === 'maintenance' ? ' active' : ''}`}
         onClick={() => onNavigate('maintenance')}
+        disabled={disabled}
+        aria-disabled={disabled}
       >
         <Wrench size={20} strokeWidth={1.75} aria-hidden="true" />
         {t('nav_maintenance')}
@@ -44,6 +52,8 @@ export default function BottomNav({ page, onNavigate, onAdd }: Props) {
       <button
         className={`bn-item${page === 'history' ? ' active' : ''}`}
         onClick={() => onNavigate('history')}
+        disabled={disabled}
+        aria-disabled={disabled}
       >
         <Clock size={20} strokeWidth={1.75} aria-hidden="true" />
         {t('nav_history')}
@@ -52,6 +62,8 @@ export default function BottomNav({ page, onNavigate, onAdd }: Props) {
       <button
         className={`bn-item${page === 'recommendations' ? ' active' : ''}`}
         onClick={() => onNavigate('recommendations')}
+        disabled={disabled}
+        aria-disabled={disabled}
       >
         <ClipboardList size={20} strokeWidth={1.75} aria-hidden="true" />
         {t('nav_recommendations')}

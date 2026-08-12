@@ -150,8 +150,29 @@ describe('MaintenancePage', () => {
     await waitFor(() => expect(screen.getByText('Mesure du pH')).toBeInTheDocument())
     fireEvent.click(screen.getByText(translations.fr.maint_log_entry))
 
-    expect(onLogEntry).toHaveBeenCalledWith('measurement')
+    // 4th arg is the triggering task's builtin_key, so the entry form can
+    // require a task-specific field (e.g. the FROG strip check).
+    expect(onLogEntry).toHaveBeenCalledWith('measurement', undefined, undefined, 'ph_measurement')
     // No completion was POSTed — only the initial task load happened.
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('hands the FROG strip check off with its own builtin_key', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => [task({
+        id: 31, key: 'frog_strip_check', builtin_key: 'frog_strip_check', label: 'Test water (FROG strip)',
+        action_types: ['Measurement', 'pH Measurement'], interval_days: 3, days_until_due: -1,
+      })],
+    } as Response)
+
+    const onLogEntry = vi.fn()
+    render(<MaintenancePage onLogEntry={onLogEntry} />)
+
+    await waitFor(() => expect(screen.getByText(translations.fr.maint_task_frog_strip_check)).toBeInTheDocument())
+    fireEvent.click(screen.getByText(translations.fr.maint_log_entry))
+
+    expect(onLogEntry).toHaveBeenCalledWith('measurement', undefined, undefined, 'frog_strip_check')
   })
 })

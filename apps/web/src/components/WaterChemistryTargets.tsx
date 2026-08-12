@@ -77,8 +77,12 @@ export default function WaterChemistryTargets({ installation, onSaved }: Props) 
       .catch(() => { if (!cancelled) setLoadError(true) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
+    // Refetches on sanitizer/type too, not just id: which WATER_PARAMS combo
+    // applies depends on both, and this tab must reflect a General-tab
+    // sanitizer change (e.g. switching to FROG @ease) without requiring the
+    // whole modal to unmount and remount first.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [installation.id])
+  }, [installation.id, installation.sanitizer, installation.type])
 
   const paramKeys = useMemo(
     () => (full ? PARAM_ORDER.filter(p => full[p]) : []),
@@ -236,6 +240,14 @@ export default function WaterChemistryTargets({ installation, onSaved }: Props) 
   return (
     <div className="flex flex-col flex-1 min-h-0" data-testid="water-chemistry-targets">
       <div className="flex-1 overflow-y-auto overscroll-contain" style={{ display: 'grid', gap: 4 }}>
+      {installation.sanitizer === 'frog_smartchlor' && (
+        <p style={{
+          fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-secondary)',
+          margin: '0 0 4px', padding: '8px 10px', borderRadius: 8, background: 'var(--bg-surface-2)',
+        }}>
+          {t('ranges_frog_smartchlor_note')}
+        </p>
+      )}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
           type="button"

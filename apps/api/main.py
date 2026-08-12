@@ -46,6 +46,7 @@ from water_params import (
     default_treatment_products,
     encode_measurement_notes,
     extract_current_conditions,
+    extract_current_smartchlor_status,
     extract_history,
     is_measurement_task,
     treatment_product_key,
@@ -56,34 +57,43 @@ limiter = Limiter(key_func=get_remote_address)
 
 # ── Reference ranges per installation type ─────────────────────────────────
 
+# Key order within each combo below is the order compute_recommendations
+# returns/displays recommendations in (it iterates the dict as-is) — and is
+# deliberately chemistry-order, not alphabetical: sanitizer first
+# (safety/sanitization takes priority), then TA, then pH (TA is the pH
+# buffer, so it's set before pH rather than after — dialing in pH first just
+# means TA correction shifts it right back out), then hardness last
+# (slow-moving, a scaling/corrosion concern rather than a day-to-day
+# sanitizing one). Matches PoolMath/Trouble Free Pool's balancing order,
+# which FROG's own guidance follows too.
 WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
     ("pool", "bromine"): {
-        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "br":     {"ideal": (2.0, 5.0), "acceptable": (1.0, 10.0)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
+        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (24, 28),   "acceptable": (15, 35)},
         "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
     ("pool", "chlorine"): {
-        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "cl":     {"ideal": (1.0, 3.0), "acceptable": (0.5, 4.0)},
         "cc":     {"ideal": (0, 0.2),   "acceptable": (0, 0.5)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
+        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (24, 28),   "acceptable": (15, 35)},
         "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
     ("spa", "bromine"): {
-        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "br":     {"ideal": (3.0, 6.0), "acceptable": (2.0, 10.0)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
+        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (36, 40),   "acceptable": (30, 42)},
         "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
     ("spa", "chlorine"): {
-        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "cl":     {"ideal": (3.0, 5.0), "acceptable": (2.0, 6.0)},
         "cc":     {"ideal": (0, 0.2),   "acceptable": (0, 0.5)},
         "tac":    {"ideal": (80, 180),  "acceptable": (60, 200)},
+        "ph":     {"ideal": (7.2, 7.6), "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (36, 40),   "acceptable": (30, 42)},
         "hardness": {"ideal": (100, 500), "acceptable": (50, 1000)},
     },
@@ -97,12 +107,12 @@ WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
     # total alkalinity slows that rise, so SWG pools are intentionally run leaner
     # on TA rather than being flagged low against a non-SWG band.
     ("pool", "salt"): {
-        "ph":     {"ideal": (7.2, 7.6),   "acceptable": (6.8, 7.8)},
         "salt":   {"ideal": (2700, 3400), "acceptable": (2500, 4500)},
         "cya":    {"ideal": (60, 80),     "acceptable": (30, 100)},
         "cl":     {"ideal": (3.0, 5.0),   "acceptable": (2.0, 6.0)},
         "cc":     {"ideal": (0, 0.2),     "acceptable": (0, 0.5)},
         "tac":    {"ideal": (60, 80),     "acceptable": (50, 100)},
+        "ph":     {"ideal": (7.2, 7.6),   "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (24, 28),     "acceptable": (15, 35)},
         "hardness": {"ideal": (100, 500),   "acceptable": (50, 1000)},
     },
@@ -110,14 +120,40 @@ WATER_PARAMS: Dict[Tuple[str, str], Dict] = {
     # approximation pending better field data. TAC follows the same lower SWG
     # band as salt pools, for the same pH-rise reasoning.
     ("spa", "salt"): {
-        "ph":     {"ideal": (7.2, 7.6),   "acceptable": (6.8, 7.8)},
         "salt":   {"ideal": (2500, 3200), "acceptable": (2000, 4000)},
         "cya":    {"ideal": (30, 50),     "acceptable": (0, 80)},
         "cl":     {"ideal": (3.0, 5.0),   "acceptable": (2.0, 6.0)},
         "cc":     {"ideal": (0, 0.2),     "acceptable": (0, 0.5)},
         "tac":    {"ideal": (60, 80),     "acceptable": (50, 100)},
+        "ph":     {"ideal": (7.2, 7.6),   "acceptable": (6.8, 7.8)},
         "temp":   {"ideal": (36, 40),     "acceptable": (30, 42)},
         "hardness": {"ideal": (100, 500),   "acceptable": (50, 1000)},
+    },
+    # FROG @ease systems (mineral + SmartChlor cartridge) sanitize without a
+    # numeric free-chlorine target — SmartChlor self-regulates at a consistent
+    # 0.5-1.0 ppm free chlorine, and the cartridge is checked as a categorical
+    # ok/out status instead (see Action.smartchlor_status). Deliberately no
+    # "cl" key here: that's what hides the FC target/row/dosing everywhere else
+    # in the app — see _merge_range_overrides and dosage.compute_recommendations,
+    # which both key off dict-key presence rather than a sanitizer conditional.
+    # ph/tac/hardness ideal bands are FROG's own published targets (pH 7.2-7.8,
+    # TA 80-120, hardness 150-250 -- frogproducts.com/product/frog-ease-test-strips/
+    # and frogproducts.com/ufaqs/how-do-frog-ease-test-strips-work/, retrieved
+    # 2026-08); acceptable bands are this project's own estimate widening those
+    # (FROG's literature doesn't publish a separate acceptable/out-of-range
+    # band) and should be revisited if better guidance turns up. No CYA either,
+    # since FROG spas don't run a stabilizer.
+    ("pool", "frog_smartchlor"): {
+        "tac":    {"ideal": (80, 120),  "acceptable": (60, 140)},
+        "ph":     {"ideal": (7.2, 7.8), "acceptable": (6.8, 8.2)},
+        "temp":   {"ideal": (24, 28),   "acceptable": (15, 35)},
+        "hardness": {"ideal": (150, 250), "acceptable": (100, 300)},
+    },
+    ("spa", "frog_smartchlor"): {
+        "tac":    {"ideal": (80, 120),  "acceptable": (60, 140)},
+        "ph":     {"ideal": (7.2, 7.8), "acceptable": (6.8, 8.2)},
+        "temp":   {"ideal": (36, 40),   "acceptable": (30, 42)},
+        "hardness": {"ideal": (150, 250), "acceptable": (100, 300)},
     },
 }
 
@@ -263,6 +299,27 @@ def _ensure_contact_columns(session: Session) -> None:
     session.commit()
 
 
+def _ensure_action_strip_profile_column(session: Session) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    session.exec(text("ALTER TABLE action ADD COLUMN IF NOT EXISTS strip_profile VARCHAR"))
+    session.commit()
+
+
+def _ensure_action_smartchlor_status_column(session: Session) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    session.exec(text("ALTER TABLE action ADD COLUMN IF NOT EXISTS smartchlor_status VARCHAR"))
+    session.commit()
+
+
+def _ensure_installation_strip_profile_column(session: Session) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    session.exec(text("ALTER TABLE installation ADD COLUMN IF NOT EXISTS strip_profile VARCHAR"))
+    session.commit()
+
+
 def _ensure_treatment_columns(session: Session) -> None:
     # The treatmentproduct table itself comes from create_all; these are the
     # columns treatments added to the pre-existing action table.
@@ -297,34 +354,9 @@ def _migrate_installations(session: Session) -> None:
     """))
     session.commit()
 
-    # For each user without an installation, create a default one
-    users_without = session.exec(text("""
-        SELECT u.id FROM "user" u
-        WHERE NOT EXISTS (
-            SELECT 1 FROM installation i WHERE i.user_id = u.id
-        )
-    """)).all()
-
-    for row in users_without:
-        uid = int(row[0])
-        # NOT NULL columns must be listed explicitly: SQLModel Field(default=...) is a
-        # Python-side default only, not a DB server_default, so raw SQL bypasses it. On
-        # a brand-new database, create_all() creates these columns without a DEFAULT
-        # clause (that only gets attached later by the ALTER TABLE migrations below,
-        # which are no-ops here since the columns already exist) — omitting a value
-        # would violate the NOT NULL constraint.
-        session.exec(
-            text("""
-                INSERT INTO installation
-                    (user_id, name, type, sanitizer, volume_unit, temp_unit, salt_unit, conc_unit, hardness_unit, created_at)
-                VALUES
-                    (:uid, 'My pool', 'pool', 'bromine', 'L', 'C', 'ppm', 'mg/L', 'ppm', NOW())
-            """).bindparams(uid=uid)
-        )
-    if users_without:
-        session.commit()
-
-    # Reattach orphaned actions to the first installation of their user
+    # Reattach orphaned actions to the first installation of their user (a
+    # no-op for a user with zero installations — including every new account
+    # now, since registration no longer auto-creates one; see register()).
     session.exec(text("""
         UPDATE action a
         SET installation_id = (
@@ -387,7 +419,7 @@ def _seed_maintenance_tasks_for_installation(
     ).all()
     if existing:
         return False
-    for sort_order, spec in enumerate(default_maintenance_tasks(installation.type)):
+    for sort_order, spec in enumerate(default_maintenance_tasks(installation.type, installation.sanitizer)):
         session.add(
             MaintenanceTask(
                 installation_id=installation.id,
@@ -475,18 +507,6 @@ def _seed_treatment_products_for_installation(
     return True
 
 
-def _seed_treatment_products(session: Session) -> None:
-    """Boot backfill: gives any installation with no treatment catalog the
-    defaults for its type and sanitizer. This is what gives databases created
-    before treatments existed something to log. Never touches an installation
-    that already has a catalog."""
-    seeded = False
-    for installation in session.exec(select(Installation)).all():
-        seeded |= _seed_treatment_products_for_installation(session, installation)
-    if seeded:
-        session.commit()
-
-
 # ── Lifespan ───────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -501,12 +521,14 @@ async def lifespan(app: FastAPI):
         _ensure_range_overrides_column(session)
         _ensure_contact_columns(session)
         _ensure_treatment_columns(session)
+        _ensure_action_strip_profile_column(session)
+        _ensure_action_smartchlor_status_column(session)
+        _ensure_installation_strip_profile_column(session)
         insert_seeds(session)
         _backfill_first_admin(session)
         _migrate_installations(session)
         _seed_maintenance_tasks(session)
         _retire_product_addition_tasks(session)
-        _seed_treatment_products(session)
     yield
 
 
@@ -626,6 +648,7 @@ class InstallationIn(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
+    strip_profile: Optional[str] = None
 
 
 class InstallationPatchIn(BaseModel):
@@ -643,6 +666,7 @@ class InstallationPatchIn(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
+    strip_profile: Optional[str] = None
 
 
 class InstallationOut(BaseModel):
@@ -665,6 +689,7 @@ class InstallationOut(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
+    strip_profile: Optional[str] = None
     created_at: datetime
 
 
@@ -685,6 +710,8 @@ class ActionIn(BaseModel):
     unit: str = ""
     brand: str = ""
     notes: str = ""
+    strip_profile: Optional[str] = None
+    smartchlor_status: Optional[str] = None
 
 
 class ParamValueOut(BaseModel):
@@ -701,6 +728,11 @@ class ParamValueOut(BaseModel):
     acceptable_max: Optional[float] = None
 
 
+class SmartChlorValueOut(BaseModel):
+    status: str  # "ok" | "out"
+    date: date
+
+
 class CurrentConditionsOut(BaseModel):
     ph: Optional[ParamValueOut] = None
     chlorine: Optional[ParamValueOut] = None
@@ -711,6 +743,7 @@ class CurrentConditionsOut(BaseModel):
     stabilizer: Optional[ParamValueOut] = None
     cc: Optional[ParamValueOut] = None
     temp: Optional[ParamValueOut] = None
+    smartchlor_status: Optional[SmartChlorValueOut] = None
 
 
 class InstallationSummaryOut(BaseModel):
@@ -718,6 +751,7 @@ class InstallationSummaryOut(BaseModel):
     name: str
     type: str
     sanitizer: str
+    strip_profile: Optional[str] = None
 
 
 class ShareIn(BaseModel):
@@ -858,6 +892,8 @@ class HistoryEntryOut(BaseModel):
     stabilizer: Optional[float] = None
     cc: Optional[float] = None
     temp: Optional[float] = None
+    strip_profile: Optional[str] = None
+    smartchlor_status: Optional[str] = None
 
 
 class MeasurementIn(BaseModel):
@@ -873,6 +909,11 @@ class MeasurementIn(BaseModel):
     temp: Optional[float] = None
     notes: str = ""
     installation_id: Optional[int] = None
+    # No `strip_profile` here deliberately: the Home Assistant service this
+    # schema serves has no strip-profile concept of its own — the server
+    # stamps it from the installation's configured profile instead (see
+    # api_create_measurement).
+    smartchlor_status: Optional[str] = None
 
 
 class MaintenanceIn(BaseModel):
@@ -909,6 +950,8 @@ class ActionOut(BaseModel):
     unit: str
     brand: str = ""
     notes: str
+    strip_profile: Optional[str] = None
+    smartchlor_status: Optional[str] = None
     created_at: datetime
 
 
@@ -1135,17 +1178,10 @@ def register(payload: RegisterIn, request: Request, session: Session = Depends(g
     session.add(user)
     session.commit()
     session.refresh(user)
-    # Create a default installation for the new user, seeded like any other —
-    # otherwise a fresh account has an empty maintenance page (and nothing to
-    # log as a maintenance or treatment entry) until the next API restart
-    # backfills it.
-    installation = Installation(user_id=user.id)
-    session.add(installation)
-    session.commit()
-    session.refresh(installation)
-    _seed_maintenance_tasks_for_installation(session, installation)
-    _seed_treatment_products_for_installation(session, installation)
-    session.commit()
+    # No default installation any more — a fresh account starts with zero and
+    # the web app prompts to add the first pool/spa explicitly (POST
+    # /installations seeds its maintenance tasks; treatment products are
+    # opt-in via POST .../treatments/seed-defaults, see that route).
     request.session["user_id"] = user.id
     return {"user": _user_out(user)}
 
@@ -1467,12 +1503,15 @@ def create_installation(
         phone=payload.phone,
         email=payload.email,
         notes=payload.notes,
+        strip_profile=payload.strip_profile,
     )
     session.add(installation)
     session.commit()
     session.refresh(installation)
+    # Maintenance tasks still seed automatically — there's no equivalent
+    # "start empty" concern for a schedule of things to do. Treatment
+    # products are opt-in now: see POST .../treatments/seed-defaults.
     _seed_maintenance_tasks_for_installation(session, installation)
-    _seed_treatment_products_for_installation(session, installation)
     session.commit()
     return installation
 
@@ -1513,6 +1552,8 @@ def update_installation(
         installation.email = payload.email
     if payload.notes is not None:
         installation.notes = payload.notes
+    if payload.strip_profile is not None:
+        installation.strip_profile = payload.strip_profile
     session.add(installation)
     session.commit()
     session.refresh(installation)
@@ -1526,11 +1567,9 @@ def delete_installation(
     session: Session = Depends(get_session),
 ):
     installation = _get_owned_installation(installation_id, user, session)
-    count = len(session.exec(
-        select(Installation).where(Installation.user_id == user.id)
-    ).all())
-    if count <= 1:
-        raise HTTPException(status_code=400, detail="You must keep at least one installation.")
+    # No "keep at least one" guard — a user with zero installations is a valid
+    # state (the initial state for every new account now, see register()),
+    # not an error condition, so deleting your last one is allowed too.
     # Cascade delete of the shares granted on it
     for share in session.exec(
         select(InstallationShare).where(InstallationShare.installation_id == installation_id)
@@ -1824,10 +1863,21 @@ def update_installation_params(
             if i_lo < a_lo or i_hi > a_hi:
                 raise _range_error(f"{param}: ideal range must be within the acceptable range")
 
-    installation.range_overrides = {
-        param: {band: list(value) for band, value in bands.items()}
-        for param, bands in payload.items()
-    }
+    # Merge into the stored overrides rather than replacing them wholesale:
+    # `payload` only ever covers params the current (type, sanitizer) combo
+    # tracks (the loop above rejects anything else), so a param this combo
+    # doesn't track — e.g. a chlorine target stashed while the installation
+    # was on a different sanitizer — must survive untouched here rather than
+    # being dropped the next time the owner saves any change. Within the
+    # tracked params, a param missing from `payload` means the owner reset it
+    # to default, so its override is cleared.
+    merged_overrides = dict(installation.range_overrides or {})
+    for param in defaults:
+        if param in payload:
+            merged_overrides[param] = {band: list(value) for band, value in payload[param].items()}
+        else:
+            merged_overrides.pop(param, None)
+    installation.range_overrides = merged_overrides
     session.add(installation)
     session.commit()
     session.refresh(installation)
@@ -2166,6 +2216,24 @@ def list_treatment_products(
     return [_treatment_out(p) for p in _list_treatment_products(session, installation_id)]
 
 
+@app.post("/installations/{installation_id}/treatments/seed-defaults", response_model=List[TreatmentProductOut])
+def seed_default_treatment_products(
+    installation_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Applies HomePool's default treatment catalog for this installation's
+    type/sanitizer — the explicit, opt-in replacement for what used to be
+    seeded automatically on creation. A no-op (200, catalog unchanged) if the
+    installation already has any products, seeded or custom — same "only
+    when completely empty" rule as _seed_treatment_products_for_installation
+    always followed, just reachable on demand now instead of only at creation."""
+    installation = _get_owned_installation(installation_id, user, session)
+    _seed_treatment_products_for_installation(session, installation)
+    session.commit()
+    return [_treatment_out(p) for p in _list_treatment_products(session, installation_id)]
+
+
 @app.post("/installations/{installation_id}/treatments", response_model=TreatmentProductOut)
 def create_treatment_product(
     installation_id: int,
@@ -2334,6 +2402,8 @@ def create_action(
         unit=payload.unit,
         brand=payload.brand,
         notes=payload.notes,
+        strip_profile=payload.strip_profile,
+        smartchlor_status=payload.smartchlor_status,
         created_at=datetime.now(timezone.utc),
     )
     session.add(action)
@@ -2357,6 +2427,8 @@ def update_action(
     action.unit = payload.unit
     action.brand = payload.brand
     action.notes = payload.notes
+    action.strip_profile = payload.strip_profile
+    action.smartchlor_status = payload.smartchlor_status
     if payload.installation_id is not None:
         resolved = _resolve_installation(
             payload.installation_id, user, session, require_write=True
@@ -2399,6 +2471,8 @@ def import_actions(
             unit=action_in.unit,
             brand=action_in.brand,
             notes=action_in.notes,
+            strip_profile=action_in.strip_profile,
+            smartchlor_status=action_in.smartchlor_status,
             created_at=now,
         ))
     session.commit()
@@ -2471,7 +2545,8 @@ def api_current_conditions(
     defaults = WATER_PARAMS.get((installation.type, installation.sanitizer), {})
     ranges = _merge_range_overrides(defaults, installation.range_overrides)
     attach_status(conditions, ranges)
-    return CurrentConditionsOut(**conditions)
+    smartchlor = extract_current_smartchlor_status(actions)
+    return CurrentConditionsOut(**conditions, smartchlor_status=smartchlor)
 
 
 @app.get("/v1/history", response_model=List[HistoryEntryOut])
@@ -2533,6 +2608,7 @@ def api_create_measurement(
     resolved_id = _resolve_installation_for_api_key(
         payload.installation_id, user, session, require_write=True
     )
+    installation = session.get(Installation, resolved_id)
     fields = {
         "chlorine": payload.chlorine,
         "bromine": payload.bromine,
@@ -2544,7 +2620,7 @@ def api_create_measurement(
         "temp": payload.temp,
     }
     fields = {k: v for k, v in fields.items() if v is not None}
-    if payload.ph is None and not fields:
+    if payload.ph is None and not fields and payload.smartchlor_status is None:
         raise HTTPException(status_code=422, detail="At least one measured value is required")
 
     encoded = encode_measurement_notes(fields)
@@ -2557,6 +2633,8 @@ def api_create_measurement(
         qty=str(payload.ph) if payload.ph is not None else "",
         unit="",
         notes=full_notes,
+        strip_profile=installation.strip_profile if installation else None,
+        smartchlor_status=payload.smartchlor_status,
         created_at=datetime.now(timezone.utc),
     )
     session.add(action)

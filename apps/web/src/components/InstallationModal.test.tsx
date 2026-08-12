@@ -61,6 +61,8 @@ describe('InstallationModal', () => {
     render(<InstallationModal open onClose={vi.fn()} />)
 
     fireEvent.change(screen.getByLabelText('Nom'), { target: { value: 'Ma piscine' } })
+    // Contact/location is collapsed by default — expand it first.
+    fireEvent.click(screen.getByText('Contact / emplacement (optionnel)'))
     fireEvent.change(screen.getByPlaceholderText('Adresse'), { target: { value: '123 rue Principale' } })
     fireEvent.change(screen.getByPlaceholderText('Nom du contact'), { target: { value: 'Jean Tremblay' } })
     fireEvent.change(screen.getByPlaceholderText('Téléphone'), { target: { value: '555-1234' } })
@@ -93,5 +95,76 @@ describe('InstallationModal', () => {
     expect(arg.phone).toBeUndefined()
     expect(arg.email).toBeUndefined()
     expect(arg.notes).toBeUndefined()
+  })
+
+  it('offers FROG @ease / SmartChlor as a sanitizer for a spa, defaulting its strip profile to frog_ease', async () => {
+    render(<InstallationModal open onClose={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('Nom'), { target: { value: 'Spa Marin' } })
+    fireEvent.click(screen.getByText(translations.fr.modal_install_spa))
+    fireEvent.click(screen.getByText(translations.fr.modal_install_frog))
+    // Selecting FROG surfaces the help text explaining the cartridge-status model.
+    expect(screen.getByText(translations.fr.modal_install_frog_help)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText("Créer l'installation"))
+
+    await waitFor(() => expect(mockAddInstallation).toHaveBeenCalledTimes(1))
+    expect(mockAddInstallation).toHaveBeenCalledWith(
+      expect.objectContaining({ sanitizer: 'frog_smartchlor', strip_profile: 'frog_ease' })
+    )
+  })
+
+  it('does not offer FROG @ease / SmartChlor for a pool — it is a spa/hot-tub-only product', () => {
+    render(<InstallationModal open onClose={vi.fn()} />)
+    // Default type is pool.
+    expect(screen.queryByText(translations.fr.modal_install_frog)).not.toBeInTheDocument()
+  })
+
+  it('drops the FROG sanitizer choice when switching type back to pool', () => {
+    render(<InstallationModal open onClose={vi.fn()} />)
+
+    fireEvent.click(screen.getByText(translations.fr.modal_install_spa))
+    fireEvent.click(screen.getByText(translations.fr.modal_install_frog))
+    expect(screen.getByText(translations.fr.modal_install_frog_help)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText(translations.fr.modal_install_pool))
+    expect(screen.queryByText(translations.fr.modal_install_frog)).not.toBeInTheDocument()
+    expect(screen.getByText(translations.fr.modal_install_chlorine)).toHaveStyle({ color: 'var(--accent)' })
+  })
+
+  it('still defaults new installations to chlorine (FROG stays opt-in)', () => {
+    render(<InstallationModal open onClose={vi.fn()} />)
+    expect(screen.getByText(translations.fr.modal_install_chlorine)).toHaveStyle({ color: 'var(--accent)' })
+    expect(screen.queryByText(translations.fr.modal_install_frog_help)).not.toBeInTheDocument()
+  })
+
+  it('calls onCreated with the new installation after creating (not before, not on failure)', async () => {
+    const created = { id: 42, name: 'Ma piscine' }
+    mockAddInstallation.mockResolvedValue(created)
+    const onCreated = vi.fn()
+    render(<InstallationModal open onClose={vi.fn()} onCreated={onCreated} />)
+
+    fireEvent.change(screen.getByLabelText('Nom'), { target: { value: 'Ma piscine' } })
+    expect(onCreated).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText("Créer l'installation"))
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(created))
+  })
+
+  it('opens the edit modal on the requested tab — used to land on Treatments right after creating', async () => {
+    const installation = {
+      id: 7, role: 'owner' as const, owner_name: null, name: 'Ma piscine', type: 'pool' as const,
+      sanitizer: 'chlorine' as const, created_at: '2026-01-01T00:00:00',
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: () => Promise.resolve([]) } as Response)
+
+    render(<InstallationModal open onClose={vi.fn()} installation={installation} initialTab="treatments" />)
+
+    await waitFor(() => {
+      expect(screen.getByText(translations.fr.modal_tab_treatments)).toHaveStyle({ color: 'var(--accent)' })
+    })
+    expect(screen.getByText(translations.fr.modal_tab_general)).toHaveStyle({ color: 'var(--text-secondary)' })
+
+    vi.restoreAllMocks()
   })
 })

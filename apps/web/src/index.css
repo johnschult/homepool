@@ -224,31 +224,6 @@ button {
   gap: 2px;
 }
 
-/* The primary action, sitting above the nav items and deliberately not looking
-   like one: filled accent, not a link. */
-.sidebar-add-entry {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 9px 12px;
-  margin-bottom: 10px;
-  border-radius: var(--radius-sm);
-  font-family: "Sora", sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent-fg);
-  background: var(--accent);
-  border: none;
-  width: 100%;
-  cursor: pointer;
-  transition: filter 0.15s;
-}
-
-.sidebar-add-entry:hover {
-  filter: brightness(1.08);
-}
-
 .sidebar-nav-item {
   display: flex;
   align-items: center;
@@ -274,10 +249,21 @@ button {
   color: var(--text-primary);
 }
 
+.sidebar-add-installation:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .sidebar-nav-item.active {
   background: var(--accent-dim);
   border-left: 2px solid var(--accent);
   color: var(--text-primary);
+}
+
+.sidebar-nav-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .sidebar-footer {
@@ -410,6 +396,16 @@ button {
   border-color: var(--border);
 }
 
+/* Non-interactive param-tile (e.g. SmartChlorCard with no onClick) — no
+   pointer cursor, no hover highlight suggesting it's clickable. */
+.param-tile-static {
+  cursor: default;
+}
+
+.param-tile-static:hover {
+  background: var(--bg-surface);
+}
+
 .param-tile::before {
   content: '';
   position: absolute;
@@ -422,7 +418,11 @@ button {
 
 .param-tile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  /* auto-fit (not auto-fill): with too few tiles to fill a row, auto-fill
+     reserves invisible empty tracks and leaves a blank gap on the right;
+     auto-fit collapses those tracks so the real tiles' 1fr stretches to
+     fill the row instead. */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -638,7 +638,11 @@ input[type="checkbox"]:checked::after {
   display: grid;
   grid-template-columns: 1fr 1.2fr;
   gap: 14px;
-  align-items: start;
+  /* stretch (not start): Needs-attention's list is height-capped with
+     internal scroll, so it can no longer grow unbounded — the two cards
+     should now match height, with the (shorter-content) pH trend card's
+     content centered within it rather than pinned to the top. */
+  align-items: stretch;
   margin-bottom: 14px;
 }
 
@@ -740,6 +744,12 @@ input[type="checkbox"]:checked::after {
 
 .bn-item.active {
   color: var(--accent);
+}
+
+.bn-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .bn-item svg {

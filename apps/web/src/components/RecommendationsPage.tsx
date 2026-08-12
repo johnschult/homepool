@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import { PartyPopper, Info, TrendingUp, TrendingDown, Plus, FlaskConical, Waves, Gem, Droplet, Droplets, Snowflake, Shield, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Action, Recommendation, RecommendationsResponse, TreatmentProduct } from '../types'
 import { PARAM_GUIDANCE } from '../paramGuidance'
 import { gramsToDisplay, mlToDisplay } from '../units'
+import { treatmentProductLabel } from '../utils'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import type { TranslationKey } from '../i18n/translations'
@@ -16,6 +18,19 @@ const sectionCardStyle: React.CSSProperties = {
   boxShadow: 'var(--shadow-card)',
   padding: '16px',
   marginBottom: 14,
+}
+
+// Same icon-per-param language as the Dashboard's tiles/Measurements page,
+// keyed by WATER_PARAMS' param id (rec.param) rather than the current-value
+// field name they sometimes differ from (cya's field is "stabilizer").
+const PARAM_ICON: Record<string, LucideIcon> = {
+  ph: FlaskConical,
+  tac: Waves,
+  hardness: Gem,
+  cl: Droplet,
+  br: Droplets,
+  salt: Snowflake,
+  cya: Shield,
 }
 
 function formatValue(n: number): string {
@@ -43,10 +58,15 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
   const [data, setData] = useState<RecommendationsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [showSimulator, setShowSimulator] = useState(false)
-  // Which dosage products this installation actually stocks. A recommendation
-  // only offers to log itself when one of them matches — otherwise the form
-  // would open on an empty product picker.
-  const [dosageProducts, setDosageProducts] = useState<Set<string>>(new Set())
+  // Which dosage products this installation actually stocks, mapped to that
+  // product's own label — a recommendation for "soda_ash" should read as
+  // whatever the user actually calls their pH increaser (its translated
+  // builtin label, or a custom name/brand they typed in), not the raw
+  // chemical name, once they have a matching product configured. Falls back
+  // to the generic chemical-name translation when there's no match, and a
+  // recommendation only offers to log itself when one exists — otherwise the
+  // form would open on an empty product picker.
+  const [dosageProducts, setDosageProducts] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
     if (!active) return
@@ -65,8 +85,10 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
       .then(r => (r.ok ? r.json() : []))
       .then((products: TreatmentProduct[]) => {
         if (cancelled || !Array.isArray(products)) return
-        setDosageProducts(new Set(
-          products.filter(p => p.enabled && p.dosage_product_id).map(p => p.dosage_product_id!)
+        setDosageProducts(new Map(
+          products
+            .filter(p => p.enabled && p.dosage_product_id)
+            .map(p => [p.dosage_product_id!, treatmentProductLabel(p, t)])
         ))
       })
       .catch(() => { /* no catalog, no log buttons — recommendations still read */ })
@@ -78,7 +100,7 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
       <div className="page-header">
         <h1 className="page-header-title">{t('recommendations_page_title')}</h1>
         <div className="page-header-actions">
-          <Button type="button" variant="outline" onClick={() => setShowSimulator(true)}>
+          <Button type="button" variant="outline" size="xs" onClick={() => setShowSimulator(true)}>
             {t('simulator_open_button')}
           </Button>
         </div>
@@ -104,21 +126,36 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
       )}
 
       {!loading && data && data.recommendations.length === 0 && (
-        <div style={{ ...sectionCardStyle, textAlign: 'center' }}>
-          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-ok-text)', margin: 0 }}>
+        <div style={{ ...sectionCardStyle, padding: '32px 16px', textAlign: 'center' }}>
+          <div style={{
+            width: 48, height: 48, margin: '0 auto 12px', borderRadius: '50%',
+            background: 'var(--status-ok-bg)', color: 'var(--status-ok-text)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <PartyPopper size={22} strokeWidth={1.75} aria-hidden="true" />
+          </div>
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 15, fontWeight: 600, color: 'var(--status-ok-text)', margin: '0 0 4px' }}>
             {t('recommendations_empty')}
+          </p>
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+            {t('recommendations_empty_sub')}
           </p>
         </div>
       )}
 
-      {!loading && data && data.recommendations.map(rec => (
-        <RecommendationCard
-          key={rec.param}
-          rec={rec}
-          onLogTreatment={onLogTreatment}
-          dosageProducts={dosageProducts}
-        />
-      ))}
+      {/* Text-heavy cards read worse the wider they get — capped so lines of
+          prose stay a reasonable length instead of stretching edge to edge
+          on a wide viewport. */}
+      <div style={{ maxWidth: 640 }}>
+        {!loading && data && data.recommendations.map(rec => (
+          <RecommendationCard
+            key={rec.param}
+            rec={rec}
+            onLogTreatment={onLogTreatment}
+            dosageProducts={dosageProducts}
+          />
+        ))}
+      </div>
     </div>
   )
 }
@@ -126,17 +163,19 @@ export default function RecommendationsPage({ actions, onLogTreatment }: Props) 
 function RecommendationCard({ rec, onLogTreatment, dosageProducts }: {
   rec: Recommendation
   onLogTreatment?: (treatment: TreatmentPrefill) => void
-  dosageProducts: Set<string>
+  dosageProducts: Map<string, string>
 }) {
   const { t } = useT()
   const guidance = PARAM_GUIDANCE[rec.param]
   const directionLabel = rec.direction === 'raise' ? t('recommendations_raise') : t('recommendations_lower')
   const directionColor = rec.direction === 'raise' ? 'var(--status-warn-text)' : 'var(--status-danger-text)'
+  const ParamIcon = PARAM_ICON[rec.param] ?? FlaskConical
 
   return (
     <div style={sectionCardStyle}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: '"Sora", sans-serif', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+          <ParamIcon size={14} strokeWidth={1.75} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
           {guidance ? t(guidance.labelKey) : rec.param}
         </div>
         <span style={{
@@ -156,28 +195,35 @@ function RecommendationCard({ rec, onLogTreatment, dosageProducts }: {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {rec.options.map((opt, i) => (
           <div key={i} style={{
-            display: 'flex', flexDirection: 'column', gap: 2,
-            padding: '8px 10px', borderRadius: 8, background: 'var(--bg-surface-2)',
+            display: 'flex', flexDirection: 'column', gap: 8,
+            padding: '10px 12px', borderRadius: 8, background: 'var(--bg-surface-2)',
           }}>
-            {opt.product_id && (
-              <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
-                {t(`dosage_product_${opt.product_id}` as TranslationKey)}
+            {/* Name + amount share a row instead of stacking — the amount is
+                the number someone's actually here for, so it gets equal
+                billing with the product name rather than trailing below it. */}
+            {(opt.product_id || opt.amount_grams !== null || opt.amount_ml !== null) && (
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+                {opt.product_id && (
+                  <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {dosageProducts.get(opt.product_id) ?? t(`dosage_product_${opt.product_id}` as TranslationKey)}
+                  </div>
+                )}
+                {opt.amount_grams !== null && <AmountLine grams={opt.amount_grams} />}
+                {opt.amount_ml !== null && <AmountLine mL={opt.amount_ml} />}
               </div>
             )}
-            {opt.amount_grams !== null && (
-              <AmountLine grams={opt.amount_grams} />
-            )}
-            {opt.amount_ml !== null && (
-              <AmountLine mL={opt.amount_ml} />
-            )}
-            {opt.notes_key && (
-              <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)' }}>
-                {t(opt.notes_key as TranslationKey)}
+
+            {/* Caveat + side-effect as compact icon chips, wrapping onto a
+                second line on narrow screens, instead of two stacked
+                full-width paragraphs that read as one undifferentiated
+                block of gray text. */}
+            {(opt.notes_key || opt.side_effect) && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {opt.notes_key && <InfoChip icon={Info} text={t(opt.notes_key as TranslationKey)} />}
+                {opt.side_effect && <SideEffectChip side={opt.side_effect} />}
               </div>
             )}
-            {opt.side_effect && (
-              <SideEffectLine side={opt.side_effect} />
-            )}
+
             {onLogTreatment && opt.product_id && dosageProducts.has(opt.product_id) && (
               <LogTreatmentButton
                 productId={opt.product_id}
@@ -214,30 +260,49 @@ function LogTreatmentButton({ productId, grams, mL, onLogTreatment }: {
   return (
     <button
       type="button"
-      className="btn-ghost"
-      style={{ alignSelf: 'flex-start', marginTop: 4, fontSize: 11, padding: '4px 8px' }}
+      className="btn-primary"
+      style={{ alignSelf: 'flex-end', fontSize: 11, padding: '5px 10px' }}
       onClick={() => onLogTreatment({
         dosage_product_id: productId,
         qty: display ? String(display.value) : undefined,
         unit: display ? toTreatmentUnit(display.unit) : undefined,
       })}
     >
+      <Plus size={12} strokeWidth={2.25} aria-hidden="true" />
       {t('recommendations_log_treatment')}
     </button>
   )
 }
 
+// A compact icon + short text pill — replaces what used to be a full-width
+// paragraph line, so several of these read as distinct labeled facts instead
+// of one continuous block of gray prose.
+function InfoChip({ icon: Icon, text }: { icon: typeof Info; text: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 5,
+      fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)',
+      background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
+      borderRadius: 999, padding: '3px 9px 3px 7px',
+    }}>
+      <Icon size={11} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0 }} />
+      {text}
+    </div>
+  )
+}
+
 // A product's secondary-parameter shift (issue #40): the translated caveat plus the
-// signed estimate. pH shifts carry no unit; everything else is ppm.
-function SideEffectLine({ side }: { side: NonNullable<Recommendation['options'][number]['side_effect']> }) {
+// signed estimate. pH shifts carry no unit; everything else is ppm. Direction of the
+// shift (up/down) gets its own icon rather than a leading +/- sign buried in prose.
+function SideEffectChip({ side }: { side: NonNullable<Recommendation['options'][number]['side_effect']> }) {
   const { t } = useT()
-  const sign = side.delta >= 0 ? '+' : '−'
-  const magnitude = Math.abs(side.delta)
+  const raises = side.delta >= 0
   const unit = side.param === 'ph' ? '' : ' ppm'
   return (
-    <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 11, color: 'var(--text-muted)' }}>
-      {t(side.notes_key as TranslationKey)} ({sign}{magnitude}{unit})
-    </div>
+    <InfoChip
+      icon={raises ? TrendingUp : TrendingDown}
+      text={`${t(side.notes_key as TranslationKey)} (${raises ? '+' : '−'}${Math.abs(side.delta)}${unit})`}
+    />
   )
 }
 

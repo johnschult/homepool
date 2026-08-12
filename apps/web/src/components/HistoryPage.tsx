@@ -7,9 +7,11 @@ import {
   getChlorineStatus,
   getTacStatus,
   getTempStatus,
+  getHardnessStatus,
   extractMeasuredParams,
   translateLabel,
   treatmentProductLabel,
+  stripMeasurementNotes,
   PRODUCT_ACTION_TYPE,
 } from '../utils'
 import { useT } from '../context/LocaleContext'
@@ -102,8 +104,9 @@ function Pill({ label, color, bg }: { label: string; color: string; bg: string }
 }
 
 function ParamPills({ action }: { action: Action }) {
+  const { t } = useT()
   const { active, ranges } = useInstallation()
-  const p = extractMeasuredParams([action])
+  const p = extractMeasuredParams([action], active?.sanitizer)
   const pills: { label: string; status: 'normal' | 'warn' | 'bad' }[] = []
 
   if (p.ph !== null) {
@@ -117,6 +120,17 @@ function ParamPills({ action }: { action: Action }) {
   }
   if (p.temp !== null) {
     pills.push({ label: `${p.temp.toFixed(1)} °${active?.temp_unit ?? 'C'}`, status: getTempStatus(p.temp, ranges ?? undefined) })
+  }
+  if (p.hardness !== null) {
+    pills.push({ label: `${t('param_hardness_short')} ${Math.round(p.hardness)} ${active?.hardness_unit ?? 'ppm'}`, status: getHardnessStatus(p.hardness, ranges ?? undefined) })
+  }
+  // Never a fabricated numeric FC value — SmartChlor's cartridge status is
+  // categorical, rendered as its own readable pill.
+  if (action.smartchlor_status === 'ok' || action.smartchlor_status === 'out') {
+    pills.push({
+      label: action.smartchlor_status === 'ok' ? t('history_smartchlor_ok') : t('history_smartchlor_out'),
+      status: action.smartchlor_status === 'ok' ? 'normal' : 'bad',
+    })
   }
 
   if (pills.length === 0) return null
@@ -139,7 +153,7 @@ function EntryCard({ action, products, treatments, onEdit, onDelete }: {
   onDelete?: (action: Action) => void
 }) {
   const { t } = useT()
-  const { ranges } = useInstallation()
+  const { active, ranges } = useInstallation()
   const [hovered, setHovered] = useState(false)
   const cat = getCategory(action)
   const title = getTitle(action, products, treatments, t)
@@ -160,7 +174,7 @@ function EntryCard({ action, products, treatments, onEdit, onDelete }: {
   // Status badge (measurement) or type pill (treatment/maintenance)
   let badge: React.ReactNode = null
   if (cat === 'measurement') {
-    const p = extractMeasuredParams([action])
+    const p = extractMeasuredParams([action], active?.sanitizer)
     const { status, hasData } = getWaterStatus({ ph: p.ph, chlorine: p.chlorine, tac: p.tac }, ranges ?? undefined)
     if (hasData) {
       const c = STATUS_CFG[status]
@@ -172,17 +186,7 @@ function EntryCard({ action, products, treatments, onEdit, onDelete }: {
   }
 
   const noteText = cat === 'measurement'
-    ? action.notes
-      .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/temperature?\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/bromine\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/hardness\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/salt\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/stabilizer\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/combined\s*:\s*[\d.]+\.?\s*/gi, '')
-      .replace(/^[\s.]+/, '')
-      .trim()
+    ? stripMeasurementNotes(action.notes)
     : action.notes.trim()
 
   return (
@@ -380,7 +384,7 @@ export default function HistoryPage({ actions, products, onEdit, onDelete }: Pro
                 background: 'var(--bg-surface)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-sm)',
-                padding: '6px 10px 6px 26px',
+                padding: '7px 10px 7px 26px',
                 width: 160,
                 outline: 'none',
               }}

@@ -35,6 +35,7 @@ import {
   RX_STABILIZER,
   RX_CC,
   RX_TEMP,
+  stripMeasurementNotes,
   type DynamicRanges,
   type MaintenanceOption,
 } from '../utils'
@@ -42,6 +43,9 @@ import { celsiusToFahrenheit, ppmToGramsPerLiter, ppmToGermanDegrees, ppmToFrenc
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import type { TranslationKey } from '../i18n/translations'
+import type { SanitizerType, SmartChlorStatus, StripProfileId } from '../sanitizer'
+import { sanitizerCapabilities, TASK_REQUIRED_MEASUREMENT } from '../sanitizer'
+import SmartChlorTiles from './SmartChlorTiles'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -88,11 +92,16 @@ type MeasureValues = {
   m_stabilizer: string
   m_cc: string
   m_temp: string
+  /** FROG @ease SmartChlor cartridge status — categorical, never a synthetic
+   * free-chlorine value. Persisted as a real Action column, not notes-encoded
+   * like the fields above (see buildPayload/measureFromAction). */
+  m_smartchlor_status: SmartChlorStatus | ''
 }
 
 const EMPTY_MEASURE: MeasureValues = {
   m_ph: '', m_bromine: '', m_chlorine: '', m_tac: '',
   m_hardness: '', m_salt: '', m_stabilizer: '', m_cc: '', m_temp: '',
+  m_smartchlor_status: '',
 }
 
 function isMeasurement(actionType: string): boolean {
@@ -107,9 +116,14 @@ function hasAnyValue(values: MeasureValues): boolean {
  * the `key: value` fields toPayload writes into notes) so edit mode round-trips. */
 function measureFromAction(action: Action): MeasureValues {
   if (!isMeasurement(action.action_type)) return EMPTY_MEASURE
-  const values: MeasureValues = { ...EMPTY_MEASURE, m_ph: action.qty }
+  const values: MeasureValues = {
+    ...EMPTY_MEASURE,
+    m_ph: action.qty,
+    // Real column, not notes-encoded — read directly rather than via regex.
+    m_smartchlor_status: action.smartchlor_status ?? '',
+  }
   const notes = action.notes ?? ''
-  const pairs: [keyof MeasureValues, RegExp][] = [
+  const pairs: [Exclude<keyof MeasureValues, 'm_ph' | 'm_smartchlor_status'>, RegExp][] = [
     ['m_bromine', RX_BROMINE],
     ['m_chlorine', RX_CHLORINE],
     ['m_tac', RX_TAC],
@@ -284,7 +298,62 @@ const BAND_HARDNESS_BASE: BandParamBase = {
   ],
 }
 
-function getBandParams(sanitizer: 'bromine' | 'chlorine' | 'salt', t: (key: TranslationKey) => string): BandParam[] {
+// ── FROG @ease ────────────────────────────────────────────────────────────
+//
+// Swatch colors and pad values below are read directly off a physical FROG
+// @ease test strip bottle/insert (not copied from AquaChek — FROG's indicator
+// dyes are a different chemistry and don't read the same colors at the same
+// pad values). The ideal/acceptable zone BOUNDARIES (zoneDefs) are chemistry,
+// not brand-specific, and are reused from the AquaChek tables' — they already
+// match WATER_PARAMS' frog_smartchlor ph/tac/hardness bands.
+const BAND_PH_FROG_BASE: BandParamBase = {
+  key: 'm_ph', labelKey: 'param_ph',
+  summaryFmt: v => `pH ${v.toFixed(1)}`,
+  swatches: [
+    { value: 6.2, bg: '#C46E2C', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 6.8, bg: '#B9523E', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 7.2, bg: '#D85E4F', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 7.6, bg: '#E55D55', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 8.0, bg: '#E95B5A', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 8.4, bg: '#EC5362', textColor: 'rgba(255,255,255,0.8)' },
+  ],
+  zoneDefs: BAND_PH_BASE.zoneDefs,
+}
+
+const BAND_TAC_FROG_BASE: BandParamBase = {
+  key: 'm_tac', labelKey: 'band_tac_alkalinity',
+  summaryFmt: v => `TAC ${v} mg/L`,
+  swatches: [
+    { value: 0,   bg: '#A88631', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 40,  bg: '#8C8131', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 80,  bg: '#72833A', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 120, bg: '#5E9C86', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 180, bg: '#51A8B1', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 240, bg: '#4EACB6', textColor: 'rgba(255,255,255,0.8)' },
+  ],
+  zoneDefs: BAND_TAC_BASE.zoneDefs,
+}
+
+const BAND_HARDNESS_FROG_BASE: BandParamBase = {
+  key: 'm_hardness', labelKey: 'param_hardness',
+  summaryFmt: v => `Hardness ${v} ppm`,
+  swatches: [
+    { value: 50,  bg: '#245D60', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 150, bg: '#294D6C', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 250, bg: '#394E86', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 450, bg: '#4C63AE', textColor: 'rgba(255,255,255,0.8)' },
+    { value: 800, bg: '#583C98', textColor: 'rgba(255,255,255,0.8)' },
+  ],
+  zoneDefs: BAND_HARDNESS_BASE.zoneDefs,
+}
+
+function getBandParams(profile: StripProfileId, sanitizer: SanitizerType, t: (key: TranslationKey) => string): BandParam[] {
+  if (profile === 'frog_ease') {
+    // TAC before pH — TA is the pH buffer, so it's read/addressed first,
+    // matching the FROG strip's own pad order and the same TA-before-pH
+    // ordering already used for dosing recommendations.
+    return [BAND_TAC_FROG_BASE, BAND_PH_FROG_BASE, BAND_HARDNESS_FROG_BASE].map(b => buildBandParam(b, t))
+  }
   const sanitizerBase = sanitizer === 'bromine' ? BAND_BROMINE_BASE : sanitizer === 'salt' ? BAND_CHLORINE_SALT_BASE : BAND_CHLORINE_BASE
   return [BAND_PH_BASE, BAND_TAC_BASE, sanitizerBase, BAND_HARDNESS_BASE].map(b => buildBandParam(b, t))
 }
@@ -319,20 +388,31 @@ function pillStyle(kind: ZoneKind): { color: string; bg: string } {
 type StripProps = {
   values: MeasureValues
   onChange: (updates: Partial<MeasureValues>) => void
-  sanitizer: 'bromine' | 'chlorine' | 'salt'
+  sanitizer: SanitizerType
+  profile: StripProfileId
+  smartchlorInvalid?: boolean
 }
 
-function StripMode({ values, onChange, sanitizer }: StripProps) {
+function StripMode({ values, onChange, sanitizer, profile, smartchlorInvalid }: StripProps) {
   const { t } = useT()
   const [hovered, setHovered] = useState<{ param: string; idx: number } | null>(null)
-  const BAND_PARAMS = getBandParams(sanitizer, t)
+  const BAND_PARAMS = getBandParams(profile, sanitizer, t)
+  const showSmartChlor = sanitizerCapabilities(sanitizer).supportsSmartChlorStatus
 
-  const summaryItems = BAND_PARAMS.flatMap(p => {
-    const v = parseFloat(values[p.key])
-    if (isNaN(v)) return []
-    const kind = swatchZone(p, v)
-    return [{ label: p.summaryFmt(v), ...pillStyle(kind) }]
-  })
+  const summaryItems = [
+    ...BAND_PARAMS.flatMap(p => {
+      const v = parseFloat(values[p.key])
+      if (isNaN(v)) return []
+      const kind = swatchZone(p, v)
+      return [{ label: p.summaryFmt(v), ...pillStyle(kind) }]
+    }),
+    ...(values.m_smartchlor_status
+      ? [{
+          label: values.m_smartchlor_status === 'ok' ? t('smartchlor_ok') : t('smartchlor_out'),
+          ...ZONE_STYLE[values.m_smartchlor_status === 'ok' ? 'ok' : 'vhigh'],
+        }]
+      : []),
+  ]
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
@@ -340,6 +420,16 @@ function StripMode({ values, onChange, sanitizer }: StripProps) {
       <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
         {t('modal_compare')}
       </div>
+
+      {/* SmartChlor cartridge status leads the strip — it's the first thing
+          the FROG strip check calls out, ahead of the TAC/pH/hardness pads. */}
+      {showSmartChlor && (
+        <SmartChlorTiles
+          value={values.m_smartchlor_status}
+          onChange={v => onChange({ m_smartchlor_status: v })}
+          invalid={smartchlorInvalid}
+        />
+      )}
 
       {BAND_PARAMS.map(p => {
         const selValue = parseFloat(values[p.key])
@@ -457,7 +547,9 @@ function StripMode({ values, onChange, sanitizer }: StripProps) {
 // ── Digital device mode ─────────────────────────────────────────────────────
 
 type DeviceField = {
-  key: keyof MeasureValues
+  // Never 'm_smartchlor_status': that field is rendered separately as
+  // SmartChlorTiles, not a numeric input (see DeviceMode).
+  key: Exclude<keyof MeasureValues, 'm_smartchlor_status'>
   label: string
   placeholder: string
   step: string
@@ -479,7 +571,7 @@ function idealHint(t: (key: TranslationKey) => string, ideal: [number, number], 
  * hint text and the live border-color validation never contradict each other.
  */
 function getDeviceFields(
-  sanitizer: 'bromine' | 'chlorine' | 'salt',
+  sanitizer: SanitizerType,
   t: (key: TranslationKey) => string,
   installation?: Installation | null,
   ranges?: DynamicRanges,
@@ -537,6 +629,17 @@ function getDeviceFields(
       tempField,
     ]
   }
+  if (sanitizer === 'frog_smartchlor') {
+    // No numeric free-chlorine field — SmartChlor cartridge status is a
+    // separate categorical control (see DeviceMode). TAC before pH, matching
+    // the strip mode's pad order and the FROG strip itself.
+    return [
+      tacField,
+      phField,
+      hardnessField,
+      tempField,
+    ]
+  }
   return [
     phField,
     chlorineField,
@@ -574,17 +677,27 @@ const STATUS_BORDER: Record<NonNullable<FieldStatus>, string> = {
 type DeviceProps = {
   values: MeasureValues
   onChange: (updates: Partial<MeasureValues>) => void
-  sanitizer: 'bromine' | 'chlorine' | 'salt'
+  sanitizer: SanitizerType
+  smartchlorInvalid?: boolean
 }
 
-function DeviceMode({ values, onChange, sanitizer }: DeviceProps) {
+function DeviceMode({ values, onChange, sanitizer, smartchlorInvalid }: DeviceProps) {
   const { t } = useT()
   const { active, ranges } = useInstallation()
   const DEVICE_FIELDS = getDeviceFields(sanitizer, t, active, ranges ?? undefined)
   const [touched, setTouched] = useState<Partial<Record<DeviceField['key'], boolean>>>({})
   const touch = (k: DeviceField['key']) => setTouched(prev => ({ ...prev, [k]: true }))
+  const showSmartChlor = sanitizerCapabilities(sanitizer).supportsSmartChlorStatus
 
   return (
+    <div style={{ display: 'grid', gap: 12 }}>
+    {showSmartChlor && (
+      <SmartChlorTiles
+        value={values.m_smartchlor_status}
+        onChange={v => onChange({ m_smartchlor_status: v })}
+        invalid={smartchlorInvalid}
+      />
+    )}
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
       {DEVICE_FIELDS.map(f => {
         const val = values[f.key]
@@ -623,6 +736,7 @@ function DeviceMode({ values, onChange, sanitizer }: DeviceProps) {
         )
       })}
     </div>
+    </div>
   )
 }
 
@@ -631,20 +745,23 @@ function DeviceMode({ values, onChange, sanitizer }: DeviceProps) {
 type MeasureSectionProps = {
   values: MeasureValues
   onChange: (updates: Partial<MeasureValues>) => void
-  sanitizer: 'bromine' | 'chlorine' | 'salt'
+  sanitizer: SanitizerType
+  profile: StripProfileId
+  smartchlorInvalid?: boolean
 }
 
-function MeasureSection({ values, onChange, sanitizer }: MeasureSectionProps) {
+function MeasureSection({ values, onChange, sanitizer, profile, smartchlorInvalid }: MeasureSectionProps) {
   const { t } = useT()
   const [mode, setMode] = useState<MeasureMode>(readMode)
 
   const switchMode = (m: MeasureMode) => { setMode(m); saveMode(m) }
+  const stripLabel = t(profile === 'frog_ease' ? 'modal_strip_frog' : 'modal_strip')
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {/* Toggle */}
       <div style={{ display: 'flex', background: 'var(--bg-surface-2)', borderRadius: 8, padding: 3, gap: 2 }}>
-        {([['manual', t('modal_manual')], ['strip', t('modal_strip')]] as [MeasureMode, string][]).map(([m, label]) => {
+        {([['manual', t('modal_manual')], ['strip', stripLabel]] as [MeasureMode, string][]).map(([m, label]) => {
           const active = mode === m
           return (
             <button
@@ -673,8 +790,8 @@ function MeasureSection({ values, onChange, sanitizer }: MeasureSectionProps) {
 
       {/* Mode content */}
       {mode === 'strip'
-        ? <StripMode values={values} onChange={onChange} sanitizer={sanitizer} />
-        : <DeviceMode values={values} onChange={onChange} sanitizer={sanitizer} />
+        ? <StripMode values={values} onChange={onChange} sanitizer={sanitizer} profile={profile} smartchlorInvalid={smartchlorInvalid} />
+        : <DeviceMode values={values} onChange={onChange} sanitizer={sanitizer} smartchlorInvalid={smartchlorInvalid} />
       }
     </div>
   )
@@ -874,21 +991,6 @@ export type EntryKind = 'measurement' | 'treatment' | 'maintenance'
 
 type NewAction = Omit<Action, 'id' | 'created_at' | 'user_id'>
 
-/** Strips the structured `key: value` measurement fields toPayload writes into
- * notes, leaving only what the user actually typed. */
-function stripMeasurementNotes(notes: string): string {
-  return notes
-    .replace(/bromine\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/hardness\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/salt\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/stabilizer\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/combined\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/temperature?\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/^[\s.]+/, '')
-    .trim()
-}
 
 type Props = {
   onAdd?: (action: NewAction) => void
@@ -903,6 +1005,13 @@ type Props = {
   /** Preselects a treatment and its amount — how the recommendations page hands
    * off "add 250 g of soda ash" as a ready-to-save entry. */
   initialTreatment?: TreatmentPrefill
+  /** The builtin_key of the maintenance task this form was opened from, when
+   * completing a task hands off to the measurement form instead of logging an
+   * empty row directly (see MaintenancePage.markDone). Looked up in
+   * TASK_REQUIRED_MEASUREMENT to decide whether a specific field (e.g. the
+   * FROG strip check's SmartChlor status) is required to save, on top of the
+   * existing "fill in at least one parameter" rule ad hoc entries keep. */
+  triggeringTaskKey?: string
 }
 
 /** A dose handed to the entry form from elsewhere. The product is matched on
@@ -916,11 +1025,13 @@ export type TreatmentPrefill = {
 
 export default function ActionForm({
   onAdd, onClose, editAction, onEdit, initialKind, initialActionType,
-  initialTreatment,
+  initialTreatment, triggeringTaskKey,
 }: Props) {
   const { t } = useT()
   const { active } = useInstallation()
   const sanitizer = active?.sanitizer ?? 'chlorine'
+  const profile = active?.strip_profile ?? sanitizerCapabilities(sanitizer).defaultStripProfile
+  const requiredMeasurement = triggeringTaskKey ? TASK_REQUIRED_MEASUREMENT[triggeringTaskKey] : undefined
 
   const isEditMode = !!editAction
   const editingMeasurement = editAction ? isMeasurement(editAction.action_type) : false
@@ -953,7 +1064,7 @@ export default function ActionForm({
     if (!editAction) return ''
     return editingMeasurement ? stripMeasurementNotes(editAction.notes) : editAction.notes
   })
-  const [error, setError] = useState<'measure' | 'task' | 'treatment' | null>(null)
+  const [error, setError] = useState<'measure' | 'measure_smartchlor_required' | 'task' | 'treatment' | null>(null)
 
   // The maintenance choices are the installation's configured tasks. A failed
   // load degrades to "no tasks" rather than blocking the measurement half.
@@ -1036,6 +1147,9 @@ export default function ActionForm({
         date, action_type: MEASUREMENT_ACTION_TYPE, product_id: null,
         treatment_id: null, installation_id, qty: values.m_ph, unit: '',
         brand: '', notes: fullNotes,
+        // Real columns, not notes-encoded — see MeasureValues/measureFromAction.
+        strip_profile: profile,
+        smartchlor_status: values.m_smartchlor_status || null,
       }
     }
     if (kind === 'treatment') {
@@ -1055,9 +1169,19 @@ export default function ActionForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (kind === 'measurement' && !hasAnyValue(values)) {
-      setError('measure')
-      return
+    if (kind === 'measurement') {
+      // A task-triggered entry (e.g. the FROG strip-check maintenance task)
+      // requires its specific field on top of the ordinary "fill in
+      // something" rule; an ad hoc "+" entry or an edit never sets
+      // triggeringTaskKey, so it keeps today's unchanged hasAnyValue check.
+      if (requiredMeasurement === 'smartchlorStatus' && !values.m_smartchlor_status) {
+        setError('measure_smartchlor_required')
+        return
+      }
+      if (!requiredMeasurement && !hasAnyValue(values)) {
+        setError('measure')
+        return
+      }
     }
     if (kind === 'treatment' && treatmentId === null) {
       setError('treatment')
@@ -1123,10 +1247,21 @@ export default function ActionForm({
 
         {kind === 'measurement' ? (
           <div className="grid gap-2">
-            <MeasureSection values={values} onChange={updateValues} sanitizer={sanitizer} />
+            <MeasureSection
+              values={values}
+              onChange={updateValues}
+              sanitizer={sanitizer}
+              profile={profile}
+              smartchlorInvalid={error === 'measure_smartchlor_required'}
+            />
             {error === 'measure' && (
               <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: 0 }}>
                 {t('modal_at_least_one')}
+              </p>
+            )}
+            {error === 'measure_smartchlor_required' && (
+              <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: 0 }}>
+                {t('modal_smartchlor_required')}
               </p>
             )}
           </div>

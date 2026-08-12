@@ -12,7 +12,6 @@ from main import (
     _merge_range_overrides,
     _retire_product_addition_tasks,
     _seed_maintenance_tasks,
-    _seed_treatment_products,
     app,
 )
 from models import Action, AppSetting, MaintenanceTask, Product, TreatmentProduct, User
@@ -259,6 +258,64 @@ def test_get_installation_params_unknown_sanitizer_returns_empty(client: TestCli
     assert params_r.json() == {}
 
 
+def test_create_installation_frog_smartchlor_sanitizer(client: TestClient):
+    login(client)
+    r = client.post(
+        "/installations",
+        json={"name": "Marin spa", "type": "spa", "sanitizer": "frog_smartchlor", "strip_profile": "frog_ease"},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["sanitizer"] == "frog_smartchlor"
+    assert data["strip_profile"] == "frog_ease"
+
+
+def test_installation_strip_profile_defaults_null(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "My pool"})
+    assert r.json()["strip_profile"] is None
+
+
+def test_patch_installation_strip_profile(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    patch_r = client.patch(f"/installations/{installation_id}", json={"strip_profile": "frog_ease"})
+    assert patch_r.status_code == 200
+    assert patch_r.json()["strip_profile"] == "frog_ease"
+
+
+def test_get_installation_params_pool_frog_smartchlor_omits_chlorine(client: TestClient):
+    login(client)
+    r = client.post(
+        "/installations",
+        json={"name": "Frog pool", "type": "pool", "sanitizer": "frog_smartchlor"},
+    )
+    installation_id = r.json()["id"]
+    params_r = client.get(f"/installations/{installation_id}/params")
+    assert params_r.status_code == 200
+    params = params_r.json()
+    assert "cl" not in params
+    assert "cya" not in params
+    assert "cc" not in params
+    assert params["ph"]["ideal"] == [7.2, 7.8]
+    assert params["tac"]["ideal"] == [80, 120]
+    assert params["hardness"]["ideal"] == [150, 250]
+    assert params["temp"]["ideal"] == [24, 28]
+
+
+def test_get_installation_params_spa_frog_smartchlor_uses_spa_temp_band(client: TestClient):
+    login(client)
+    r = client.post(
+        "/installations",
+        json={"name": "Marin spa", "type": "spa", "sanitizer": "frog_smartchlor"},
+    )
+    installation_id = r.json()["id"]
+    params_r = client.get(f"/installations/{installation_id}/params")
+    params = params_r.json()
+    assert "cl" not in params
+    assert params["temp"]["ideal"] == [36, 40]
+
+
 # ── Per-installation range overrides ────────────────────────────────────────
 
 def test_merge_range_overrides_applies_only_present_bands(water_params_snapshot):
@@ -400,6 +457,57 @@ def test_put_installation_params_rejects_wrong_length_band_value(client: TestCli
     assert put_r.status_code == 400
 
 
+def test_put_installation_params_rejects_chlorine_on_frog_smartchlor(client: TestClient):
+    login(client)
+    r = client.post("/installations", json={"name": "Frog spa", "type": "spa", "sanitizer": "frog_smartchlor"})
+    installation_id = r.json()["id"]
+    put_r = client.put(f"/installations/{installation_id}/params", json={"cl": {"ideal": [1.0, 3.0]}})
+    assert put_r.status_code == 400
+
+
+def test_switching_to_frog_smartchlor_preserves_stored_chlorine_override(client: TestClient):
+    """The FC target a chlorine installation had customized must survive a
+    switch to FROG (inert — invisible to a frog_smartchlor combo, which has no
+    "cl" key — but not deleted) and reappear on a switch back."""
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "type": "pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    client.put(f"/installations/{installation_id}/params", json={"cl": {"ideal": [2.0, 4.0]}})
+
+    client.patch(f"/installations/{installation_id}", json={"sanitizer": "frog_smartchlor"})
+    frog_params = client.get(f"/installations/{installation_id}/params").json()
+    assert "cl" not in frog_params
+
+    client.patch(f"/installations/{installation_id}", json={"sanitizer": "chlorine"})
+    chlorine_params = client.get(f"/installations/{installation_id}/params").json()
+    assert chlorine_params["cl"]["ideal"] == [2.0, 4.0]
+
+
+def test_saving_unrelated_param_on_frog_smartchlor_does_not_wipe_stored_chlorine_override(client: TestClient):
+    """Regression: PUT /params used to replace Installation.range_overrides
+    wholesale with only the params in the request body. Since a frog_smartchlor
+    combo never has a "cl" key, saving *any* change while on frog_smartchlor
+    could never include "cl" in that body — so the old behavior silently
+    deleted a stashed FC override the first time the owner touched an
+    unrelated param (e.g. pH) after switching to FROG."""
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "type": "pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    client.put(f"/installations/{installation_id}/params", json={"cl": {"ideal": [2.0, 4.0]}})
+    client.patch(f"/installations/{installation_id}", json={"sanitizer": "frog_smartchlor"})
+
+    # Save an unrelated override while on frog_smartchlor.
+    save_r = client.put(f"/installations/{installation_id}/params", json={"ph": {"ideal": [7.0, 7.4]}})
+    assert save_r.status_code == 200
+
+    client.patch(f"/installations/{installation_id}", json={"sanitizer": "chlorine"})
+    chlorine_params = client.get(f"/installations/{installation_id}/params").json()
+    assert chlorine_params["cl"]["ideal"] == [2.0, 4.0]
+    assert chlorine_params["ph"]["ideal"] == [7.0, 7.4]
+
+
 def test_create_installation_with_volume(client: TestClient):
     login(client)
     r = client.post(
@@ -510,15 +618,16 @@ def test_delete_installation_removes_its_actions(client: TestClient):
 
 def test_delete_installation_removes_its_seeded_rows(fk_client: TestClient):
     """Deleting a pool has to take its maintenance tasks and treatment catalog
-    with it. Both are seeded at creation, so *every* installation has them and
-    this is the ordinary path, not an edge case — but it only fails where
-    foreign keys are enforced, hence fk_client (see conftest)."""
+    with it — maintenance tasks are seeded at creation and treatments via the
+    seed-defaults endpoint, and this is the ordinary path either way, not an
+    edge case — but it only fails where foreign keys are enforced, hence
+    fk_client (see conftest)."""
     login(fk_client)
     fk_client.post("/installations", json={"name": "My pool"})
     r = fk_client.post("/installations", json={"name": "Garden spa", "type": "spa"})
     installation_id = r.json()["id"]
 
-    treatments = fk_client.get(f"/installations/{installation_id}/treatments").json()
+    treatments = fk_client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()
     tasks = fk_client.get(f"/installations/{installation_id}/maintenance").json()
     assert treatments and tasks, "seeding should have given the new pool both"
 
@@ -543,12 +652,16 @@ def test_delete_installation_removes_its_seeded_rows(fk_client: TestClient):
         ).all() == []
 
 
-def test_delete_last_installation_rejected(client: TestClient):
+def test_delete_last_installation_is_allowed(client: TestClient):
+    """A user with zero installations is a valid state now — the initial state
+    for every new account (see register()) — so deleting your last one is no
+    longer a special error case."""
     login(client)
     r = client.post("/installations", json={"name": "My pool"})
     installation_id = r.json()["id"]
     delete_r = client.delete(f"/installations/{installation_id}")
-    assert delete_r.status_code == 400
+    assert delete_r.status_code == 204
+    assert client.get("/installations").json() == []
 
 
 def test_delete_installation_not_found(client: TestClient):
@@ -579,7 +692,7 @@ def test_v1_installations_lists_owned_installations(client: TestClient):
     data = r.json()
     names = {i["name"]: i["type"] for i in data}
     assert names == {"Backyard Pool": "pool", "Hot Tub": "spa"}
-    assert set(data[0].keys()) == {"id", "name", "type", "sanitizer"}
+    assert set(data[0].keys()) == {"id", "name", "type", "sanitizer", "strip_profile"}
     sanitizers = {i["name"]: i["sanitizer"] for i in data}
     assert sanitizers["Backyard Pool"] == "salt"
 
@@ -596,7 +709,10 @@ def test_v1_current_includes_units(client: TestClient):
     key = get_api_key(client)
     inst_r = client.post(
         "/installations",
-        json={"name": "My pool", "temp_unit": "F", "conc_unit": "ppm", "hardness_unit": "°f", "salt_unit": "g/L"},
+        json={
+            "name": "My pool", "sanitizer": "chlorine",
+            "temp_unit": "F", "conc_unit": "ppm", "hardness_unit": "°f", "salt_unit": "g/L",
+        },
     )
     installation_id = inst_r.json()["id"]
     client.post(
@@ -619,6 +735,81 @@ def test_v1_current_includes_units(client: TestClient):
     assert data["hardness"]["unit"] == "°f"
     assert data["salt"]["unit"] == "g/L"
     assert data["temp"]["unit"] == "°F"
+
+
+def test_v1_current_omits_stale_chlorine_for_frog_smartchlor(client: TestClient):
+    """A "chlorine: X" reading logged before a switch to frog_smartchlor must
+    never resurface via /v1/current, even though it's still in the action's
+    notes text — this sanitizer never tracks a numeric FC value."""
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    client.post(
+        "/actions",
+        json={
+            "date": TODAY, "action_type": "Measurement", "installation_id": installation_id,
+            "notes": "pH 7.4 chlorine 3 TAC 100",
+        },
+    )
+    client.patch(f"/installations/{installation_id}", json={"sanitizer": "frog_smartchlor"})
+
+    r = client.get(f"/v1/current?installation_id={installation_id}", headers=auth_headers(key))
+    assert r.status_code == 200
+    data = r.json()
+    assert data["chlorine"] is None
+    assert data["ph"]["value"] == 7.4
+
+
+def test_v1_current_omits_stale_chlorine_for_bromine(client: TestClient):
+    """Same latent gap, closed as a bonus: bromine never had a "cl" WATER_PARAMS
+    band, but a historical "chlorine: X" notes match could still leak into
+    /v1/current unused-but-present before this fix."""
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "sanitizer": "bromine"}
+    ).json()["id"]
+    client.post(
+        "/actions",
+        json={
+            "date": TODAY, "action_type": "Measurement", "installation_id": installation_id,
+            "notes": "pH 7.4 chlorine 3 bromine 4",
+        },
+    )
+    r = client.get(f"/v1/current?installation_id={installation_id}", headers=auth_headers(key))
+    data = r.json()
+    assert data["chlorine"] is None
+    assert data["bromine"]["value"] == 4
+
+
+def test_v1_current_includes_smartchlor_status(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post(
+        "/installations", json={"name": "Marin spa", "type": "spa", "sanitizer": "frog_smartchlor"}
+    ).json()["id"]
+    client.post(
+        "/v1/measurements",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "ph": 7.4, "smartchlor_status": "out"},
+    )
+    r = client.get(f"/v1/current?installation_id={installation_id}", headers=auth_headers(key))
+    data = r.json()
+    assert data["smartchlor_status"]["status"] == "out"
+    assert data["smartchlor_status"]["date"] == TODAY
+    assert data["chlorine"] is None
+
+
+def test_v1_current_smartchlor_status_null_when_never_checked(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post(
+        "/installations", json={"name": "Marin spa", "type": "spa", "sanitizer": "frog_smartchlor"}
+    ).json()["id"]
+    r = client.get(f"/v1/current?installation_id={installation_id}", headers=auth_headers(key))
+    assert r.json()["smartchlor_status"] is None
 
 
 def test_v1_current_requires_api_key(client: TestClient):
@@ -795,7 +986,7 @@ def test_v1_todo_requires_api_key(client: TestClient):
 def test_v1_create_measurement_is_readable_back(client: TestClient):
     login(client)
     key = get_api_key(client)
-    inst_r = client.post("/installations", json={"name": "My pool"})
+    inst_r = client.post("/installations", json={"name": "My pool", "sanitizer": "chlorine"})
     installation_id = inst_r.json()["id"]
 
     r = client.post(
@@ -850,6 +1041,40 @@ def test_v1_create_measurement_requires_api_key(client: TestClient):
     client.post("/installations", json={"name": "My pool"})
     r = client.post("/v1/measurements", json={"ph": 7.4})
     assert r.status_code == 401
+
+
+def test_v1_create_measurement_accepts_smartchlor_status_without_numeric_fields(client: TestClient):
+    """The core FROG product constraint: a SmartChlor strip check is valid on
+    its own, with no numeric free-chlorine value required."""
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post(
+        "/installations", json={"name": "Marin spa", "type": "spa", "sanitizer": "frog_smartchlor"}
+    ).json()["id"]
+    r = client.post(
+        "/v1/measurements",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "smartchlor_status": "ok"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["smartchlor_status"] == "ok"
+    assert body["qty"] == ""
+
+
+def test_v1_create_measurement_stamps_installation_strip_profile(client: TestClient):
+    login(client)
+    key = get_api_key(client)
+    installation_id = client.post(
+        "/installations",
+        json={"name": "Marin spa", "type": "spa", "sanitizer": "frog_smartchlor", "strip_profile": "frog_ease"},
+    ).json()["id"]
+    r = client.post(
+        "/v1/measurements",
+        headers=auth_headers(key),
+        json={"installation_id": installation_id, "smartchlor_status": "ok"},
+    )
+    assert r.json()["strip_profile"] == "frog_ease"
 
 
 # ── /v1/maintenance ──────────────────────────────────────────────────────
@@ -1048,6 +1273,46 @@ def test_maintenance_spa_defaults_differ_from_pool(client: TestClient):
     assert _task_by_key(tasks, "purge")["action_types"] == ["Purge"]
 
 
+def test_maintenance_frog_smartchlor_seeds_strip_check_instead_of_ph_measurement(client: TestClient):
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "Marin spa", "type": "spa", "sanitizer": "frog_smartchlor"}
+    ).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    keys = {t["builtin_key"] for t in tasks}
+    assert "ph_measurement" not in keys
+    strip_check = _task_by_key(tasks, "frog_strip_check")
+    assert strip_check["interval_days"] == 3  # spa cadence preserved
+    assert set(strip_check["action_types"]) == {"Measurement", "pH Measurement"}
+
+
+def test_maintenance_chlorine_installation_keeps_ph_measurement(client: TestClient):
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    keys = {t["builtin_key"] for t in tasks}
+    assert "ph_measurement" in keys
+    assert "frog_strip_check" not in keys
+
+
+def test_switching_sanitizer_does_not_retroactively_change_seeded_maintenance_tasks(client: TestClient):
+    """Seeded tasks are ordinary, deletable rows — switching sanitizer on an
+    *existing* installation must not resurrect/replace them, matching the
+    "seeding only reaches new installations" doctrine maintenance tasks
+    already follow."""
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    client.patch(f"/installations/{installation_id}", json={"sanitizer": "frog_smartchlor"})
+    tasks = client.get(f"/installations/{installation_id}/maintenance").json()
+    keys = {t["builtin_key"] for t in tasks}
+    assert "ph_measurement" in keys
+    assert "frog_strip_check" not in keys
+
+
 def test_maintenance_on_demand_task_is_never_due(client: TestClient):
     """interval_days=0 marks an on-demand task: it can be logged, its last
     completion is tracked, but it never becomes due."""
@@ -1164,16 +1429,26 @@ def test_maintenance_backfill_seeds_a_taskless_installation(client: TestClient):
     ]
 
 
-def test_maintenance_seeded_on_the_default_installation_from_register(empty_client: TestClient):
-    """Registering creates a pool for you. It has to arrive with tasks like any
-    other, or the new account's maintenance page is empty — and so is the
-    maintenance half of the entry form — until the API is next restarted."""
+def test_registering_starts_with_zero_installations(empty_client: TestClient):
+    """No default pool any more — the web app prompts to add the first one
+    explicitly instead of assuming what a brand-new account wants."""
     r = empty_client.post(
         "/auth/register",
         json={"first_name": "New", "email": "new@example.com", "password": "Password1"},
     )
     assert r.status_code == 200
-    installation_id = empty_client.get("/installations").json()[0]["id"]
+    assert empty_client.get("/installations").json() == []
+
+
+def test_maintenance_seeded_on_the_first_installation_you_create(empty_client: TestClient):
+    """A pool you create after registering has to arrive with tasks like any
+    other, or the maintenance page is empty — and so is the maintenance half
+    of the entry form."""
+    empty_client.post(
+        "/auth/register",
+        json={"first_name": "New", "email": "new@example.com", "password": "Password1"},
+    )
+    installation_id = empty_client.post("/installations", json={"name": "My pool"}).json()["id"]
     tasks = empty_client.get(f"/installations/{installation_id}/maintenance").json()
     assert {t["builtin_key"] for t in tasks} == {
         "ph_measurement",
@@ -1310,12 +1585,25 @@ def _treatment_by_key(catalog, key):
     return next(t for t in catalog if t["key"] == key)
 
 
-def test_treatments_seeded_on_installation_create(client: TestClient):
+def test_installation_created_without_a_treatment_catalog(client: TestClient):
+    """Treatment products are opt-in now — creation no longer auto-seeds them
+    (unlike maintenance tasks, which still do)."""
     login(client)
     installation_id = client.post(
         "/installations", json={"name": "My pool", "sanitizer": "chlorine"}
     ).json()["id"]
-    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    assert client.get(f"/installations/{installation_id}/treatments").json() == []
+    assert client.get(f"/installations/{installation_id}/maintenance").json() != []
+
+
+def test_seed_default_treatments_populates_an_empty_catalog(client: TestClient):
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    r = client.post(f"/installations/{installation_id}/treatments/seed-defaults")
+    assert r.status_code == 200
+    catalog = r.json()
     keys = {t["builtin_key"] for t in catalog}
     assert {"chlorine", "chlorine_shock", "stabilizer", "ph_increaser", "flocculant"} <= keys
     # The sanitizer's own products lead the list.
@@ -1324,6 +1612,35 @@ def test_treatments_seeded_on_installation_create(client: TestClient):
     assert ph_up["default_unit"] == "g"
     assert ph_up["param"] == "ph"
     assert ph_up["dosage_product_id"] == "soda_ash"
+    # Reflected by the ordinary catalog read too, not just the seed response.
+    assert {t["builtin_key"] for t in client.get(f"/installations/{installation_id}/treatments").json()} == keys
+
+
+def test_seed_default_treatments_is_a_noop_once_the_catalog_has_anything(client: TestClient):
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    client.post(
+        f"/installations/{installation_id}/treatments",
+        json={"label": "Pond juice", "icon": "mdi:flask", "default_unit": "L"},
+    )
+    r = client.post(f"/installations/{installation_id}/treatments/seed-defaults")
+    assert r.status_code == 200
+    keys = {t["builtin_key"] for t in r.json()}
+    assert keys == {None}  # only the custom product — defaults were not added on top
+
+
+def test_seed_default_treatments_requires_ownership(client: TestClient):
+    login(client)
+    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    client.post("/auth/logout")
+    client.post(
+        "/auth/register",
+        json={"first_name": "Other", "email": "other@example.com", "password": "OtherPass1"},
+    )
+    r = client.post(f"/installations/{installation_id}/treatments/seed-defaults")
+    assert r.status_code == 404
 
 
 def test_treatments_seeded_per_sanitizer_and_type(client: TestClient):
@@ -1331,12 +1648,50 @@ def test_treatments_seeded_per_sanitizer_and_type(client: TestClient):
     spa_id = client.post(
         "/installations", json={"name": "My spa", "type": "spa", "sanitizer": "bromine"}
     ).json()["id"]
-    catalog = client.get(f"/installations/{spa_id}/treatments").json()
+    catalog = client.post(f"/installations/{spa_id}/treatments/seed-defaults").json()
     keys = {t["builtin_key"] for t in catalog}
     assert "bromine" in keys and "chlorine" not in keys
     # Anti-foam is spa-only; flocculant is a pool procedure.
     assert "foam_reducer" in keys and "flocculant" not in keys
     assert _treatment_by_key(catalog, "bromine")["default_unit"] == "tablet"
+
+
+def test_treatments_seeded_for_frog_smartchlor(client: TestClient):
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "Marin spa", "type": "spa", "sanitizer": "frog_smartchlor"}
+    ).json()["id"]
+    catalog = client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()
+    keys = {t["builtin_key"] for t in catalog}
+    assert {"smartchlor_cartridge", "mineral_cartridge"} <= keys
+    # No chlorine-dosing products — FROG doesn't fall back to the chlorine set.
+    assert "chlorine" not in keys
+    assert "chlorine_shock" not in keys
+    assert "stabilizer" not in keys
+    # Still needs ordinary water-balance products — FROG only replaces the
+    # sanitizer, not pH/TA/hardness/shock/filter care.
+    assert {"ph_increaser", "ph_decreaser", "alkalinity_increaser", "hardness_increaser",
+            "non_chlorine_shock", "clarifier", "filter_cleaner"} <= keys
+    # Not part of FROG's own recommended routine — excluded from the default set.
+    assert "algaecide" not in keys
+    assert "metal_sequestrant" not in keys
+    # Spa-only extra, since a frog_smartchlor installation is always a spa.
+    assert "foam_reducer" in keys
+    cartridge = _treatment_by_key(catalog, "smartchlor_cartridge")
+    assert cartridge["param"] is None
+    assert cartridge["dosage_product_id"] is None
+
+
+def test_treatments_for_other_sanitizers_still_include_algaecide_and_sequestrant(client: TestClient):
+    """Regression: the FROG-specific exclusion must not leak into chlorine/
+    bromine/salt installations."""
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "My pool", "sanitizer": "chlorine"}
+    ).json()["id"]
+    keys = {t["builtin_key"] for t in client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()}
+    assert "algaecide" in keys
+    assert "metal_sequestrant" in keys
 
 
 def test_treatment_create_update_and_delete(client: TestClient):
@@ -1374,7 +1729,7 @@ def test_treatment_rename_clears_builtin_key(client: TestClient):
     showing the translated default."""
     login(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
-    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    catalog = client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()
     algaecide = _treatment_by_key(catalog, "algaecide")
 
     r = client.patch(
@@ -1392,7 +1747,7 @@ def test_treatment_patch_with_the_same_label_keeps_builtin_key(client: TestClien
     unchanged label must not freeze the product in one language."""
     login(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
-    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    catalog = client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()
     algaecide = _treatment_by_key(catalog, "algaecide")
 
     r = client.patch(
@@ -1416,7 +1771,7 @@ def test_treatment_links_are_validated_and_clearable(client: TestClient):
         json={"label": "Bad dosage", "dosage_product_id": "unobtainium"},
     ).status_code == 422
 
-    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    catalog = client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()
     ph_up = _treatment_by_key(catalog, "ph_increaser")
     r = client.patch(
         f"/installations/{installation_id}/treatments/{ph_up['id']}",
@@ -1452,47 +1807,21 @@ def test_treatment_config_is_owner_only(client: TestClient):
     ).status_code == 404
 
 
-def test_treatment_backfill_seeds_a_catalogless_installation(client: TestClient):
-    """Databases predating treatments have installations with no catalog at all;
-    the boot backfill is what gives them something to log."""
-    login(client)
-    installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
-
-    with Session(client.test_engine) as session:
-        for product in session.exec(
-            select(TreatmentProduct).where(
-                TreatmentProduct.installation_id == installation_id
-            )
-        ).all():
-            session.delete(product)
-        session.commit()
-
-        _seed_treatment_products(session)
-        _seed_treatment_products(session)  # idempotent
-
-        products = session.exec(
-            select(TreatmentProduct).where(
-                TreatmentProduct.installation_id == installation_id
-            )
-        ).all()
-
-    assert "ph_increaser" in {p.builtin_key for p in products}
-    assert len(products) == len({p.builtin_key for p in products})
-
-
-def test_treatment_backfill_leaves_configured_installations_alone(client: TestClient):
+def test_seed_default_treatments_leaves_a_configured_installation_alone(client: TestClient):
     """Every product is deletable, so a missing default means the user removed
-    it — topping up would undo that."""
+    it — re-seeding must not top that back up. (Same rule the endpoint's
+    "only when completely empty" check already enforces via the
+    test_seed_default_treatments_is_a_noop_once_the_catalog_has_anything
+    case; this locks in the specific "deleted a seeded default" scenario.)"""
     login(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
-    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    catalog = client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()
     assert client.delete(
         f"/installations/{installation_id}/treatments/"
         f"{_treatment_by_key(catalog, 'clarifier')['id']}"
     ).status_code == 204
 
-    with Session(client.test_engine) as session:
-        _seed_treatment_products(session)
+    client.post(f"/installations/{installation_id}/treatments/seed-defaults")
 
     keys = {
         t["builtin_key"]
@@ -1553,7 +1882,7 @@ def test_v1_treatment_catalog_lists_enabled_products_only(client: TestClient):
     login(client)
     key = get_api_key(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
-    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    catalog = client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()
     clarifier = _treatment_by_key(catalog, "clarifier")
     client.patch(
         f"/installations/{installation_id}/treatments/{clarifier['id']}",
@@ -1575,6 +1904,7 @@ def test_v1_create_treatment_is_readable_back_in_history(client: TestClient):
     installation_id = client.post(
         "/installations", json={"name": "My pool", "sanitizer": "chlorine"}
     ).json()["id"]
+    client.post(f"/installations/{installation_id}/treatments/seed-defaults")
 
     r = client.post(
         "/v1/treatments",
@@ -1607,6 +1937,7 @@ def test_v1_create_treatment_accepts_a_custom_date_and_unit(client: TestClient):
     login(client)
     key = get_api_key(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    client.post(f"/installations/{installation_id}/treatments/seed-defaults")
     then = (date.today() - timedelta(days=4)).isoformat()
     r = client.post(
         "/v1/treatments",
@@ -1625,6 +1956,7 @@ def test_v1_create_treatment_rejects_unknown_and_disabled_products(client: TestC
     login(client)
     key = get_api_key(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
+    client.post(f"/installations/{installation_id}/treatments/seed-defaults")
 
     r = client.post(
         "/v1/treatments",
@@ -1653,7 +1985,7 @@ def test_v1_create_treatment_uses_the_custom_key_after_a_rename(client: TestClie
     login(client)
     key = get_api_key(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
-    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    catalog = client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()
     algaecide = _treatment_by_key(catalog, "algaecide")
     client.patch(
         f"/installations/{installation_id}/treatments/{algaecide['id']}",
@@ -1683,7 +2015,7 @@ def test_treatment_history_label_survives_deleting_the_product(client: TestClien
     login(client)
     key = get_api_key(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
-    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    catalog = client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()
     algaecide = _treatment_by_key(catalog, "algaecide")
 
     client.post(
@@ -1707,7 +2039,7 @@ def test_treatment_history_label_follows_a_rename(client: TestClient):
     login(client)
     key = get_api_key(client)
     installation_id = client.post("/installations", json={"name": "My pool"}).json()["id"]
-    catalog = client.get(f"/installations/{installation_id}/treatments").json()
+    catalog = client.post(f"/installations/{installation_id}/treatments/seed-defaults").json()
     algaecide = _treatment_by_key(catalog, "algaecide")
     client.post(
         "/v1/treatments",
@@ -1730,7 +2062,7 @@ def test_actions_reject_a_treatment_from_another_installation(client: TestClient
     login(client)
     mine = client.post("/installations", json={"name": "Mine"}).json()["id"]
     other = client.post("/installations", json={"name": "Other"}).json()["id"]
-    foreign = client.get(f"/installations/{other}/treatments").json()[0]
+    foreign = client.post(f"/installations/{other}/treatments/seed-defaults").json()[0]
 
     r = client.post("/actions", json={
         "date": TODAY, "action_type": "Add product", "installation_id": mine,
@@ -1928,6 +2260,33 @@ def test_get_installation_recommendations_without_volume(client: TestClient):
     assert tac_rec["options"][0]["amount_grams"] is None
 
 
+def test_get_installation_recommendations_frog_smartchlor_never_recommends_chlorine(client: TestClient):
+    """End-to-end: even a wildly out-of-range historical "chlorine: X" text
+    reading (leftover from before a sanitizer switch) never produces a "cl"
+    dosing recommendation for a frog_smartchlor installation — both because
+    /v1/current-style extraction suppresses it and because the frog_smartchlor
+    WATER_PARAMS combo has no "cl" key for compute_recommendations to iterate."""
+    login(client)
+    installation_id = client.post(
+        "/installations",
+        json={"name": "Marin spa", "type": "spa", "sanitizer": "frog_smartchlor", "volume": 1500, "volume_unit": "L"},
+    ).json()["id"]
+    client.post(
+        "/actions",
+        json={
+            "date": TODAY,
+            "action_type": "Measurement",
+            "installation_id": installation_id,
+            "notes": "pH 7.4 chlorine 0.1 TAC 40 hardness 50",
+        },
+    )
+    rec_r = client.get(f"/installations/{installation_id}/recommendations")
+    assert rec_r.status_code == 200
+    params = {r["param"] for r in rec_r.json()["recommendations"]}
+    assert "cl" not in params
+    assert "tac" in params  # still recommends on tracked params
+
+
 # ── Administration & registration ──────────────────────────────────────────
 
 
@@ -2104,6 +2463,7 @@ def share_setup(client: TestClient, role: str = "viewer"):
     installation_id = client.post(
         "/installations", json={"name": "Shared pool", "type": "pool", "sanitizer": "chlorine"}
     ).json()["id"]
+    client.post(f"/installations/{installation_id}/treatments/seed-defaults")
     register(client, "other@example.com", name="Robin")
     login(client)
     r = client.post(
@@ -2118,11 +2478,12 @@ def share_setup(client: TestClient, role: str = "viewer"):
 
 def test_share_appears_in_recipients_installation_list(client: TestClient):
     installation_id, share_id = share_setup(client, "viewer")
+    # The recipient's own installation, alongside the one shared with them.
+    client.post("/installations", json={"name": "Robin's pool"})
     listing = client.get("/installations").json()
     shared = next(i for i in listing if i["id"] == installation_id)
     assert shared["role"] == "viewer"
     assert shared["owner_name"] == "admin@example.com"
-    # Their own default installation is still listed, and owned.
     own = [i for i in listing if i["id"] != installation_id]
     assert own and all(i["role"] == "owner" and i["owner_name"] is None for i in own)
 
@@ -2347,7 +2708,6 @@ def test_recipient_cannot_revoke_a_share_by_id(client: TestClient):
 def test_deleting_an_installation_removes_its_shares(client: TestClient):
     installation_id, share_id = share_setup(client, "viewer")
     login(client)
-    # An owner must keep at least one installation, so give them a second one.
     client.post("/installations", json={"name": "Spare"})
     assert client.delete(f"/installations/{installation_id}").status_code == 204
     login_as(client, "other@example.com")
@@ -2401,3 +2761,28 @@ def test_v1_write_routes_accept_an_editor(client: TestClient):
         f"/v1/current?installation_id={installation_id}", headers=headers
     )
     assert r.json()["ph"]["value"] == 7.4
+
+
+# ── Import ────────────────────────────────────────────────────────────────
+
+def test_import_actions_roundtrips_strip_profile_and_smartchlor_status(client: TestClient):
+    login(client)
+    installation_id = client.post(
+        "/installations", json={"name": "Marin spa", "type": "spa", "sanitizer": "frog_smartchlor"}
+    ).json()["id"]
+    r = client.post(
+        "/import",
+        json=[{
+            "date": TODAY,
+            "action_type": "Measurement",
+            "installation_id": installation_id,
+            "qty": "7.4",
+            "strip_profile": "frog_ease",
+            "smartchlor_status": "out",
+        }],
+    )
+    assert r.status_code == 200
+    actions = client.get("/actions").json()
+    assert len(actions) == 1
+    assert actions[0]["strip_profile"] == "frog_ease"
+    assert actions[0]["smartchlor_status"] == "out"

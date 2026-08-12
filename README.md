@@ -48,6 +48,7 @@ Designed for self-hosters and the Home Assistant crowd who want full control wit
 - **Multi-installation** — manage multiple pools and spas with adapted reference ranges
 - **Pool sharing** — give another account read-only or read-and-log access to one of your pools, for a partner, a housemate or the person who looks after it while you're away
 - **Bromine, chlorine or salt** — differentiated ideal ranges per sanitizer, including a full salt water generator (SWG) profile: higher CYA, a matching free-chlorine target, and a lower total alkalinity target to slow the pH rise SWG cells cause
+- **FROG @ease / SmartChlor** — a categorical cartridge status (OK / replace) instead of a numeric free-chlorine target; pH, alkalinity and hardness are tracked like any other sanitizer, using FROG's own interactive test-strip color chart, and chlorine dosing recommendations are simply never generated for this system
 - **Configurable ideal ranges** — override any water-parameter range per installation, right from the UI
 - **Dosage recommendations** — out-of-range params get a targeted dosing suggestion (liquid CYA now gets a real active-ingredient estimate instead of just "check the bottle"), plus a what-if simulator with slider inputs bounded by your installation's own acceptable ranges and prefilled from your latest reading
 - **Full history** — monthly timeline, type filters, full-text search
@@ -223,7 +224,8 @@ Each installation gets a device with the following entities:
 
 | Entity | Description |
 |---|---|
-| `sensor.<installation>_ph`, `_chlorine`, `_bromine`, `_tac`, `_hardness`, `_salt`, `_stabilizer_cya`, `_combined_chlorine`, `_temperature` | One sensor per measured water parameter — only created for fields your installation actually tracks (or that you mapped to one of your own entities, see [Custom sensors](#6-custom-sensors--use-your-own-probes)). Carries `date`, and (server permitting) `status` (`ok`/`warn`/`danger`) and `ideal_min`/`ideal_max` attributes. |
+| `sensor.<installation>_ph`, `_chlorine`, `_bromine`, `_tac`, `_hardness`, `_salt`, `_stabilizer_cya`, `_combined_chlorine`, `_temperature` | One sensor per measured water parameter — only created for fields your installation actually tracks (or that you mapped to one of your own entities, see [Custom sensors](#6-custom-sensors--use-your-own-probes)). Carries `date`, and (server permitting) `status` (`ok`/`warn`/`danger`) and `ideal_min`/`ideal_max` attributes. Never created for `_chlorine` on a FROG @ease SmartChlor installation — see the SmartChlor sensor below instead. |
+| `sensor.<installation>_smartchlor` | FROG @ease SmartChlor cartridge status — an `ENUM` sensor with state `ok` or `out`, only created once a strip check has been logged. Carries `date` and a friendly `status_text` ("OK — cartridge active" / "OUT — replace cartridge") attribute. Never a numeric free-chlorine value. |
 | `sensor.<installation>_days_until_ph_measurement_due`, `_days_until_filter_maintenance_due` | Plain numeric "days until due" sensors (not on/off) that go negative once overdue, so you can set your own automation threshold instead of a fixed one, e.g. `states('sensor.xxx_days_until_ph_measurement_due') \| int <= 3`. |
 | `sensor.<installation>_history` | Recent activity (measurements, treatments, maintenance) — state is the entry count, with the entries themselves on the `entries` attribute. Powers the `homepool-history-card`. |
 | `sensor.<installation>_treatments` | The products you can log a treatment with — state is the product count, with the catalog itself (`key`, `label`, `icon`, `default_unit`, `param`) on the `treatments` attribute. Powers the card's "Log treatment" picker, and the `key` values are what `homepool.log_treatment` accepts. |
@@ -231,7 +233,7 @@ Each installation gets a device with the following entities:
 
 #### 5. The homepool card
 
-A hand-written Lovelace card ships with the integration (no separate frontend install) — it mirrors the web app's water-status-board look: mono values, a status dot per parameter, an ideal/acceptable range gauge, and a "measured N days ago" readout, plus one button per enabled maintenance task and "Log measurement" / "Log treatment" buttons that open a popup form. The measurement form adapts its fields to your installation's sanitizer (chlorine/bromine/salt), with a "more fields" toggle for hardness, CYA and notes; the treatment form offers your installation's own product catalog, with the amount, unit (pre-filled from the product) and an optional brand. Either button can be hidden from the card's visual editor.
+A hand-written Lovelace card ships with the integration (no separate frontend install) — it mirrors the web app's water-status-board look: mono values, a status dot per parameter, an ideal/acceptable range gauge, and a "measured N days ago" readout, plus one button per enabled maintenance task and "Log measurement" / "Log treatment" buttons that open a popup form. The measurement form adapts its fields to your installation's sanitizer (chlorine/bromine/salt/FROG @ease SmartChlor), with a "more fields" toggle for hardness, CYA and notes; the treatment form offers your installation's own product catalog, with the amount, unit (pre-filled from the product) and an optional brand. Either button can be hidden from the card's visual editor.
 
 Each parameter tile is interactive: **tap the tile** to open the log-measurement popup focused on that field, or **tap the 📈 icon** to open Home Assistant's native more-info dialog (history graph) for that sensor. Pressing a maintenance button flashes a "✓ Logged" confirmation.
 
@@ -331,6 +333,18 @@ name: Log measurement
 icon: mdi:flask-outline
 ```
 
+For a FROG @ease SmartChlor installation, use `smartchlor_status` (`ok` or `out`) instead of `chlorine` — no numeric free-chlorine value is required or accepted for this system:
+
+```yaml
+action: homepool.log_measurement
+data:
+  installation_id: 1
+  ph: 7.4
+  tac: 100
+  hardness: 200
+  smartchlor_status: ok
+```
+
 For something you added to the water, `homepool.log_treatment` records the product and how much. `treatment` is the product key — one of the keys on your installation's `sensor.<installation>_treatments` entity. `unit` is optional and defaults to the product's own unit, and `brand` is free text for the product you actually bought:
 
 ```yaml
@@ -380,7 +394,9 @@ Copy `.env.example` to `.env` and adjust the values:
 
 #### Customizing ideal water-parameter ranges
 
-Every ideal/acceptable range shown in the app (pH, free chlorine, salt, CYA, alkalinity, hardness, temperature...) has sensible built-in defaults per installation type and sanitizer — including a salt water generator (SWG) profile with a higher CYA target (60-80 ppm), a matching free-chlorine band, and a lower total alkalinity target (60-80 ppm, vs. 80-180 ppm for manually-dosed pools) since SWG cells raise pH over time and a lower TA slows that rise — following [PoolMath](https://www.troublefreepool.com/blog/poolmath/) / Trouble Free Pool guidance. If your setup runs differently, open an installation's edit modal → **Water Chemistry Targets** tab to customize any band per installation, right from the UI — no env vars or restarts required.
+Every ideal/acceptable range shown in the app (pH, free chlorine, salt, CYA, alkalinity, hardness, temperature...) has sensible built-in defaults per installation type and sanitizer — including a salt water generator (SWG) profile with a higher CYA target (60-80 ppm), a matching free-chlorine band, and a lower total alkalinity target (60-80 ppm, vs. 80-180 ppm for manually-dosed pools) since SWG cells raise pH over time and a lower TA slows that rise — following [PoolMath](https://www.troublefreepool.com/blog/poolmath/) / Trouble Free Pool guidance. FROG @ease SmartChlor installations track pH, alkalinity and hardness the same way (targets per FROG's own product guidance), but deliberately skip a free-chlorine target and dosing workflow entirely — SmartChlor self-regulates at a consistent free-chlorine level, and cartridge replacement is read straight off the test strip's Out Indicator instead. If your setup runs differently, open an installation's edit modal → **Water Chemistry Targets** tab to customize any band per installation, right from the UI — no env vars or restarts required.
+
+**Switching sanitizer/strip type never touches history.** Every logged entry remembers which strip profile it was taken with, so old AquaChek readings stay AquaChek readings and old FROG SmartChlor checks stay readable even after you change an installation's sanitizer. Any free-chlorine target you'd customized before switching to FROG is kept (just hidden while FROG is active) and reappears exactly as you left it if you switch back.
 
 ---
 

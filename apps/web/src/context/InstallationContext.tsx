@@ -2,11 +2,18 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import type { Installation, InstallationWaterParams } from '../types'
 import { installationParamsToRanges, type DynamicRanges } from '../utils'
 import type { TempUnit, SaltUnit, ConcUnit, HardnessUnit } from '../units'
+import type { SanitizerType, StripProfileId } from '../sanitizer'
 
 type InstallationCtx = {
   installations: Installation[]
   active: Installation | null
   ranges: DynamicRanges | null
+  /** True until the first GET /installations resolves. Lets the app tell
+   * "still loading" apart from "genuinely has zero installations" — the
+   * latter is a normal state for a brand-new account now (see
+   * apps/api/main.py's register()), which shows an "add your first pool or
+   * spa" prompt instead of the ordinary dashboard. */
+  loading: boolean
   /** The active installation is your own — you may configure, share or delete it. */
   isOwner: boolean
   /** You may log entries against the active installation (owner or editor). */
@@ -16,7 +23,7 @@ type InstallationCtx = {
   addInstallation: (data: {
     name: string
     type: 'pool' | 'spa'
-    sanitizer: 'bromine' | 'chlorine' | 'salt'
+    sanitizer: SanitizerType
     volume?: number
     volume_unit?: 'L' | 'gal'
     temp_unit?: TempUnit
@@ -28,6 +35,7 @@ type InstallationCtx = {
     phone?: string
     email?: string
     notes?: string
+    strip_profile?: StripProfileId
   }) => Promise<Installation>
   deleteInstallation: (id: number) => Promise<void>
   /** Removes your own share on someone else's installation. */
@@ -50,6 +58,7 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
     return stored ? parseInt(stored) : null
   })
   const [ranges, setRanges] = useState<DynamicRanges | null>(null)
+  const [loading, setLoading] = useState(true)
 
   const active = installations.find(i => i.id === activeId) ?? installations[0] ?? null
   const isOwner = active?.role === 'owner'
@@ -77,6 +86,7 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
         setActiveId(validId)
       }
     } catch { /* silently ignore */ }
+    finally { setLoading(false) }
   }, [])
 
   useEffect(() => {
@@ -102,7 +112,7 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
   const addInstallation = useCallback(async (data: {
     name: string
     type: 'pool' | 'spa'
-    sanitizer: 'bromine' | 'chlorine' | 'salt'
+    sanitizer: SanitizerType
     volume?: number
     volume_unit?: 'L' | 'gal'
     temp_unit?: TempUnit
@@ -114,6 +124,7 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
     phone?: string
     email?: string
     notes?: string
+    strip_profile?: StripProfileId
   }): Promise<Installation> => {
     const res = await fetch('/api/installations', {
       method: 'POST',
@@ -165,7 +176,7 @@ export function InstallationProvider({ children }: { children: React.ReactNode }
   }, [])
 
   return (
-    <InstallationContext.Provider value={{ installations, active, ranges, isOwner, canEdit, setActive, refresh, addInstallation, deleteInstallation, leaveInstallation, updateRanges }}>
+    <InstallationContext.Provider value={{ installations, active, ranges, loading, isOwner, canEdit, setActive, refresh, addInstallation, deleteInstallation, leaveInstallation, updateRanges }}>
       {children}
     </InstallationContext.Provider>
   )

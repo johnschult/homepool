@@ -14,7 +14,7 @@ import HistoryPage from './components/HistoryPage'
 import RecommendationsPage from './components/RecommendationsPage'
 import MaintenancePage from './components/MaintenancePage'
 import LoginPage from './components/LoginPage'
-import InstallationModal from './components/InstallationModal'
+import InstallationModal, { type Tab as InstallationModalTab } from './components/InstallationModal'
 import InstallBanner from './components/InstallBanner'
 import {
   Dialog,
@@ -45,8 +45,13 @@ type AppMainProps = {
 }
 
 function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps) {
-  const { active, canEdit } = useInstallation()
+  const { active, canEdit, installations, loading: installationsLoading } = useInstallation()
   const [editingInstallation, setEditingInstallation] = useState(false)
+  // Which tab the edit modal opens on. Defaults to 'general' for the normal
+  // "click the pencil icon" path; set to 'treatments' right after creating a
+  // new installation so the user lands straight on setting up their dosing
+  // products instead of having to find the tab themselves.
+  const [editInstallationTab, setEditInstallationTab] = useState<InstallationModalTab>('general')
   const { t } = useT()
   const [actions, setActions] = useState<Action[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -60,10 +65,13 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
     kind: EntryKind
     actionType?: string
     treatment?: TreatmentPrefill
+    /** The builtin_key of the maintenance task this entry was opened from, if
+     * any — see ActionForm's triggeringTaskKey prop. */
+    triggeringTaskKey?: string
   }
   const [entryForm, setEntryForm] = useState<EntryFormState | null>(null)
-  const openEntryForm = (kind: EntryKind, actionType?: string, treatment?: TreatmentPrefill) =>
-    setEntryForm({ kind, actionType, treatment })
+  const openEntryForm = (kind: EntryKind, actionType?: string, treatment?: TreatmentPrefill, triggeringTaskKey?: string) =>
+    setEntryForm({ kind, actionType, treatment, triggeringTaskKey })
   const [editingAction, setEditingAction] = useState<Action | null>(null)
   const [deletingAction, setDeletingAction] = useState<Action | null>(null)
   const [showProfile, setShowProfile] = useState(false)
@@ -192,8 +200,17 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
     }
   }
 
+  if (installationsLoading) return <div className="page-loading">{t('loading')}</div>
   if (loading && actions.length === 0) return <div className="page-loading">{t('loading')}</div>
   if (error) return <div className="page-loading" style={{ color: 'var(--status-danger-text)' }}>{error}</div>
+
+  // With zero installations there is nothing for Measurements/History/
+  // Maintenance/Recommendations to show — Dashboard is the only page that
+  // makes sense (it renders its own "add your first pool or spa" prompt).
+  // Topbar disables the other nav items in this state too, but this also
+  // catches a stale #hash landing directly on one of them.
+  const hasInstallations = installations.length > 0
+  const effectivePage: Page = hasInstallations ? page : 'log'
 
   return (
     <div className="app-layout">
@@ -203,7 +220,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
         onProfile={() => setShowProfile(true)}
         onAdmin={user.is_admin ? () => setShowAdmin(true) : undefined}
         onAddInstallation={() => setShowInstallationModal(true)}
-        onEditInstallation={() => setEditingInstallation(true)}
+        onEditInstallation={() => { setEditInstallationTab('general'); setEditingInstallation(true) }}
         page={page}
         onNavigate={navigate}
         user={user}
@@ -212,16 +229,16 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
       />
 
       <main className="main-content">
-        {page === 'measurements'
-          ? <MeasurementsPage actions={actions} />
-          : page === 'history'
+        {effectivePage === 'measurements'
+          ? <MeasurementsPage actions={actions} onAdd={canEdit ? () => openEntryForm('measurement') : undefined} />
+          : effectivePage === 'history'
           ? <HistoryPage actions={actions} products={products} onEdit={canEdit ? setEditingAction : undefined} onDelete={canEdit ? setDeletingAction : undefined} />
-          : page === 'recommendations'
+          : effectivePage === 'recommendations'
           ? <RecommendationsPage
               actions={actions}
               onLogTreatment={canEdit ? (treatment => openEntryForm('treatment', undefined, treatment)) : undefined}
             />
-          : page === 'maintenance'
+          : effectivePage === 'maintenance'
           ? <MaintenancePage
               onActionLogged={loadData}
               onLogEntry={canEdit ? openEntryForm : undefined}
@@ -235,6 +252,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
               onImport={canEdit ? handleImport : undefined}
               onNavigate={navigate}
               onAdd={canEdit ? () => openEntryForm('measurement') : undefined}
+              onAddInstallation={hasInstallations ? undefined : () => setShowInstallationModal(true)}
             />
         }
       </main>
@@ -253,6 +271,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
               initialKind={entryForm.kind}
               initialActionType={entryForm.actionType}
               initialTreatment={entryForm.treatment}
+              triggeringTaskKey={entryForm.triggeringTaskKey}
               onClose={() => setEntryForm(null)}
             />
           )}
@@ -334,6 +353,12 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
       <InstallationModal
         open={showInstallationModal}
         onClose={() => setShowInstallationModal(false)}
+        onCreated={() => {
+          // Guide straight to setting up treatments rather than leaving the
+          // user to discover the Treatments tab on their own.
+          setEditInstallationTab('treatments')
+          setEditingInstallation(true)
+        }}
       />
 
       {/* Modal — edit installation */}
@@ -342,6 +367,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
           open={editingInstallation}
           onClose={() => setEditingInstallation(false)}
           installation={active}
+          initialTab={editInstallationTab}
         />
       )}
 
