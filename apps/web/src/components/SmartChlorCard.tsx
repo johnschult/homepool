@@ -51,11 +51,26 @@ export default function SmartChlorCard({ status, lastCheckedDate, onClick }: Pro
           {valueText}
         </span>
       </div>
-      {lastCheckedLabel && (
-        <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, color: 'var(--text-muted)' }}>
-          {t('dash_last_measured')} {lastCheckedLabel}
-        </div>
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 4 }}>
+        {lastCheckedLabel ? (
+          <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, color: 'var(--text-muted)' }}>
+            {t('dash_last_measured')} {lastCheckedLabel}
+          </div>
+        ) : <span />}
+        {/* A plain-text nod to the brand (plus the 🐸 emoji, already used
+            elsewhere for the FROG strip profile) rather than the FROG®
+            mascot artwork — that's King Technology's registered trademark
+            and this repo is MIT-licensed and publicly redistributed. */}
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: 3,
+          fontFamily: '"IBM Plex Mono", monospace', fontSize: 9, fontWeight: 600, letterSpacing: '0.03em',
+          padding: '2px 6px', borderRadius: 999, flexShrink: 0,
+          background: 'var(--status-ok-bg)', color: 'var(--status-ok-text)',
+        }}>
+          <span aria-hidden="true">🐸</span>
+          {t('strip_profile_frog_ease')}
+        </span>
+      </div>
     </button>
   )
 }
