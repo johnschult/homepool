@@ -8,6 +8,7 @@ import TrendChart from './TrendChart'
 import {
   PARAM_RANGES,
   extractMeasuredParams,
+  extractSmartChlorStatus,
   getPhStatus,
   getChlorineStatus,
   getBromineStatus,
@@ -27,6 +28,8 @@ import {
   type DynamicRanges,
 } from '../utils'
 import { ACTION_TYPE_LABELS } from './ActionForm'
+import { sanitizerCapabilities } from '../sanitizer'
+import SmartChlorCard from './SmartChlorCard'
 
 function formatDateLong(d: Date, locale: Locale): string {
   return d.toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-GB', {
@@ -55,6 +58,10 @@ type Props = {
   onImport?: (file: File) => Promise<void>
   onNavigate?: (page: 'measurements' | 'history' | 'recommendations' | 'maintenance') => void
   onAdd?: () => void
+  /** Present only when the account has zero installations — swaps the empty
+   * state's prompt from "log a measurement" to "add a pool/spa", since there
+   * is nothing yet to log a measurement against. */
+  onAddInstallation?: () => void
 }
 
 type TileDef = {
@@ -68,14 +75,15 @@ type TileDef = {
   format: (v: number) => string
 }
 
-export default function DashboardPage({ actions, products: _products, onEdit, onDelete, onExport, onImport, onNavigate, onAdd }: Props) {
+export default function DashboardPage({ actions, products: _products, onEdit, onDelete, onExport, onImport, onNavigate, onAdd, onAddInstallation }: Props) {
   const { active, ranges } = useInstallation()
   const { t, locale } = useT()
   const sanitizer = active?.sanitizer ?? 'chlorine'
 
   const today = new Date()
 
-  const params = useMemo(() => extractMeasuredParams(actions), [actions])
+  const params = useMemo(() => extractMeasuredParams(actions, sanitizer), [actions, sanitizer])
+  const smartChlor = useMemo(() => extractSmartChlorStatus(actions), [actions])
   const phHistory = useMemo(() => getParamHistory(actions, 'ph', 12), [actions])
 
   const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([])
@@ -150,7 +158,10 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         status: params.chlorine !== null ? getChlorineStatus(params.chlorine, ranges ?? undefined) : null,
         historyKey: 'chlorine', range: r('chlorine'), format: v => v.toFixed(1),
       })
-    } else {
+    } else if (sanitizerCapabilities(sanitizer).supportsFreeChlorineTarget) {
+      // frog_smartchlor falls through here with no tile: it has no numeric FC
+      // target, so nothing is pushed — see the SmartChlorCard rendered
+      // alongside this tile grid instead.
       defs.push({
         key: 'chlorine', label: t('param_chlorine'),
         value: params.chlorine !== null ? params.chlorine.toFixed(1) : '—', unit: concUnit,
@@ -231,10 +242,27 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         </div>
       </div>
 
-      {actions.length === 0 ? (
-        /* ── Empty state ─────────────────────────────────────────────────── */
+      {!active ? (
+        /* ── Empty state: no installation at all ───────────────────────────── */
+        <div className="card" style={{ padding: '48px 24px', textAlign: 'center', maxWidth: 420, margin: '48px auto' }}>
+          <Droplets size={28} strokeWidth={1.5} style={{ display: 'block', margin: '0 auto 12px', color: 'var(--accent)' }} aria-hidden="true" />
+          <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
+            {t('onboarding_title')}
+          </div>
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-secondary)', margin: '6px auto 20px', maxWidth: 340 }}>
+            {t('onboarding_sub')}
+          </p>
+          {onAddInstallation && (
+            <button className="btn-primary" onClick={onAddInstallation}>
+              <Plus size={15} strokeWidth={2} />
+              {t('onboarding_add_button')}
+            </button>
+          )}
+        </div>
+      ) : actions.length === 0 ? (
+        /* ── Empty state: installation exists, nothing logged yet ─────────── */
         <div className="card" style={{ padding: '48px 24px', textAlign: 'center' }}>
-          <Droplets size={28} strokeWidth={1.5} style={{ color: 'var(--accent)', marginBottom: 12 }} aria-hidden="true" />
+          <Droplets size={28} strokeWidth={1.5} style={{ display: 'block', margin: '0 auto 12px', color: 'var(--accent)' }} aria-hidden="true" />
           <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
             {t('dash_empty_title')}
           </div>
@@ -255,6 +283,13 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
             {tiles.map(tile => (
               <ParamTile key={tile.key} tile={tile} actions={actions} onClick={() => onNavigate?.('measurements')} />
             ))}
+            {sanitizerCapabilities(sanitizer).supportsSmartChlorStatus && (
+              <SmartChlorCard
+                status={smartChlor?.status ?? null}
+                lastCheckedDate={smartChlor?.date ?? null}
+                onClick={() => onNavigate?.('measurements')}
+              />
+            )}
           </div>
 
           {/* ── Attention + trend ───────────────────────────────────────────── */}
@@ -531,7 +566,8 @@ function ActionTypeBadge({ actionType }: { actionType: string }) {
 
 function ActionParamPills({ action }: { action: Action }) {
   const { active, ranges } = useInstallation()
-  const p = extractMeasuredParams([action])
+  const { t } = useT()
+  const p = extractMeasuredParams([action], active?.sanitizer)
   const pills: Array<{ label: string; color: string; bg: string }> = []
   const styleMap = {
     normal: { color: 'var(--status-ok-text)',     bg: 'var(--status-ok-bg)'     },
@@ -553,6 +589,11 @@ function ActionParamPills({ action }: { action: Action }) {
   if (p.temp !== null) {
     const s = getTempStatus(p.temp, ranges ?? undefined)
     pills.push({ label: `T° ${p.temp.toFixed(1)} °${active?.temp_unit ?? 'C'}`, ...styleMap[s] })
+  }
+  if (action.smartchlor_status === 'ok' || action.smartchlor_status === 'out') {
+    pills.push(action.smartchlor_status === 'ok'
+      ? { label: t('smartchlor_ok'), ...styleMap.normal }
+      : { label: t('smartchlor_out'), ...styleMap.bad })
   }
   if (pills.length === 0) {
     return <span style={{ color: 'var(--text-muted)', fontFamily: '"IBM Plex Mono", monospace', fontSize: 10 }}>—</span>

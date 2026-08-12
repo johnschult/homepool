@@ -1,4 +1,5 @@
 import type { TempUnit, SaltUnit, ConcUnit, HardnessUnit } from './units'
+import type { SanitizerType, StripProfileId, SmartChlorStatus } from './sanitizer'
 
 export type Product = {
   id: number
@@ -46,6 +47,14 @@ export type Action = {
   /** Free-text brand on top of the catalog choice, e.g. "HTH Super". */
   brand?: string
   notes: string
+  /** Only meaningful on Measurement rows. Which strip/test-method profile was
+   * active when this row was logged — snapshotted so an old entry keeps
+   * rendering with the tiles it was actually taken against even if the
+   * installation's profile changes later. Undefined/null = legacy/AquaChek. */
+  strip_profile?: StripProfileId | null
+  /** SmartChlor cartridge status read off a FROG @ease strip. Not a synthetic
+   * free-chlorine value — never persisted alongside a `freeChlorine` reading. */
+  smartchlor_status?: SmartChlorStatus | null
   created_at: string
 }
 
@@ -91,7 +100,7 @@ export type Installation = {
   owner_name?: string | null
   name: string
   type: 'pool' | 'spa'
-  sanitizer: 'bromine' | 'chlorine' | 'salt'
+  sanitizer: SanitizerType
   volume?: number | null
   volume_unit?: 'L' | 'gal'
   temp_unit?: TempUnit
@@ -103,6 +112,10 @@ export type Installation = {
   phone?: string | null
   email?: string | null
   notes?: string | null
+  /** Which test-strip/method profile this installation's owner uses at entry
+   * time. Undefined/null = "aquachek" (every installation created before this
+   * field existed, and the default for chlorine/bromine/salt going forward). */
+  strip_profile?: StripProfileId | null
   created_at: string
 }
 

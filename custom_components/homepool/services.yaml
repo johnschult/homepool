@@ -90,6 +90,15 @@ log_measurement:
       selector:
         number:
           mode: box
+    smartchlor_status:
+      name: SmartChlor status
+      description: FROG @ease SmartChlor cartridge status read off a test strip's Out Indicator — "ok" (cartridge active) or "out" (replace cartridge). Not a free-chlorine value.
+      example: ok
+      selector:
+        select:
+          options:
+            - ok
+            - out
     notes:
       name: Notes
       description: Optional free-text notes.

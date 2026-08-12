@@ -13,12 +13,15 @@ import {
   getPhTrend,
   getDaysSince,
   extractMeasuredParams,
+  extractSmartChlorStatus,
 } from '../utils'
 import { useT } from '../context/LocaleContext'
 import { useInstallation } from '../context/InstallationContext'
 import type { Locale } from '../i18n/translations'
 import type { DynamicRanges } from '../utils'
 import TrendChart from './TrendChart'
+import SmartChlorCard from './SmartChlorCard'
+import { sanitizerCapabilities } from '../sanitizer'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -115,6 +118,9 @@ type Props = { actions: Action[] }
 export default function MeasurementsPage({ actions }: Props) {
   const { t, locale } = useT()
   const { active, ranges } = useInstallation()
+  const sanitizer = active?.sanitizer ?? 'chlorine'
+  const showSmartChlor = sanitizerCapabilities(sanitizer).supportsSmartChlorStatus
+  const smartChlor = useMemo(() => extractSmartChlorStatus(actions), [actions])
   const [period, setPeriod] = useState<Period>(1)
 
   const PERIODS: { label: string; value: Period }[] = [
@@ -162,11 +168,11 @@ export default function MeasurementsPage({ actions }: Props) {
   const tableRows = useMemo(() =>
     filtered
       .map(a => {
-        const p = extractMeasuredParams([a])
-        return { action: a, ph: p.ph, chlorine: p.chlorine, tac: p.tac, temp: p.temp }
+        const p = extractMeasuredParams([a], sanitizer)
+        return { action: a, ph: p.ph, chlorine: p.chlorine, tac: p.tac, temp: p.temp, smartchlorStatus: a.smartchlor_status ?? null }
       })
-      .filter(r => r.ph !== null || r.chlorine !== null || r.tac !== null || r.temp !== null)
-  , [filtered])
+      .filter(r => r.ph !== null || r.chlorine !== null || r.tac !== null || r.temp !== null || r.smartchlorStatus !== null)
+  , [filtered, sanitizer])
 
   // ── Trend sub-text ────────────────────────────────────────────────────────
   function trendNode() {
@@ -287,28 +293,34 @@ export default function MeasurementsPage({ actions }: Props) {
           />
         </div>
 
-        {/* Chlorine chart */}
-        <div className="card" style={{ padding: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div className="section-title" style={{ margin: 0 }}>{t('graph_chlorine_trend')}</div>
-            {clLast && (
-              <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, fontWeight: 500, color: valueColor(getChlorineStatus(clLast.value, ranges ?? undefined)) }}>
-                {clLast.value.toFixed(1)} {active?.conc_unit ?? 'mg/L'}
-              </span>
-            )}
+        {/* Chlorine chart — replaced by a SmartChlor cartridge summary for
+            frog_smartchlor: categorical cartridge status can't reuse the
+            numeric TrendChart, and there's no numeric FC target to plot. */}
+        {showSmartChlor ? (
+          <SmartChlorCard status={smartChlor?.status ?? null} lastCheckedDate={smartChlor?.date ?? null} />
+        ) : (
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div className="section-title" style={{ margin: 0 }}>{t('graph_chlorine_trend')}</div>
+              {clLast && (
+                <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, fontWeight: 500, color: valueColor(getChlorineStatus(clLast.value, ranges ?? undefined)) }}>
+                  {clLast.value.toFixed(1)} {active?.conc_unit ?? 'mg/L'}
+                </span>
+              )}
+            </div>
+            <TrendChart
+              points={clPoints}
+              idealMin={clRange.ideal[0]}
+              idealMax={clRange.ideal[1]}
+              acceptableMin={clRange.acceptable[0]}
+              acceptableMax={clRange.acceptable[1]}
+              unit={active?.conc_unit ?? 'mg/L'}
+              height={140}
+              formatValue={v => v.toFixed(1)}
+              emptyLabel={clPoints.length === 0 ? t('measurements_no_chlorine_period') : t('graph_not_enough_data')}
+            />
           </div>
-          <TrendChart
-            points={clPoints}
-            idealMin={clRange.ideal[0]}
-            idealMax={clRange.ideal[1]}
-            acceptableMin={clRange.acceptable[0]}
-            acceptableMax={clRange.acceptable[1]}
-            unit={active?.conc_unit ?? 'mg/L'}
-            height={140}
-            formatValue={v => v.toFixed(1)}
-            emptyLabel={clPoints.length === 0 ? t('measurements_no_chlorine_period') : t('graph_not_enough_data')}
-          />
-        </div>
+        )}
       </div>
 
       {/* ── Zone 3: Table ────────────────────────────────────────────────── */}
@@ -332,14 +344,14 @@ export default function MeasurementsPage({ actions }: Props) {
                 <tr>
                   <th style={{ ...numTh, textAlign: 'left' }}>{t('table_date')}</th>
                   <th style={{ ...numTh, textAlign: 'right' }}>{t('param_ph')}</th>
-                  <th style={{ ...numTh, textAlign: 'right' }}>{t('param_chlorine')}</th>
+                  <th style={{ ...numTh, textAlign: 'right' }}>{showSmartChlor ? t('dash_smartchlor_title') : t('param_chlorine')}</th>
                   <th style={{ ...numTh, textAlign: 'right' }}>{t('param_tac')}</th>
                   <th style={{ ...numTh, textAlign: 'right' }}>{t('param_temp_label')}</th>
                   <th style={{ ...numTh, textAlign: 'left', paddingLeft: 12 }}>{t('measurements_status')}</th>
                 </tr>
               </thead>
               <tbody>
-                {tableRows.map(({ action, ph, chlorine, tac, temp }) => (
+                {tableRows.map(({ action, ph, chlorine, tac, temp, smartchlorStatus }) => (
                   <tr key={action.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td style={{ padding: '9px 8px 9px 0', fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                       {formatShort(action.date)}
@@ -348,7 +360,13 @@ export default function MeasurementsPage({ actions }: Props) {
                       {cellValue(ph, v => getPhStatus(v, ranges ?? undefined), v => v.toFixed(1))}
                     </td>
                     <td style={{ padding: '9px 8px 9px 0', textAlign: 'right' }}>
-                      {cellValue(chlorine, v => getChlorineStatus(v, ranges ?? undefined), v => `${v.toFixed(1)} ${active?.conc_unit ?? 'mg/L'}`)}
+                      {showSmartChlor
+                        ? (smartchlorStatus
+                          ? <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, fontWeight: 600, color: smartchlorStatus === 'ok' ? 'var(--status-ok-text)' : 'var(--status-danger-text)' }}>
+                              {smartchlorStatus === 'ok' ? t('smartchlor_ok') : t('smartchlor_out')}
+                            </span>
+                          : <span style={{ color: 'var(--text-muted)', fontFamily: '"IBM Plex Mono", monospace', fontSize: 12 }}>—</span>)
+                        : cellValue(chlorine, v => getChlorineStatus(v, ranges ?? undefined), v => `${v.toFixed(1)} ${active?.conc_unit ?? 'mg/L'}`)}
                     </td>
                     <td style={{ padding: '9px 8px 9px 0', textAlign: 'right' }}>
                       {cellValue(tac, v => getTacStatus(v, ranges ?? undefined), v => `${Math.round(v)} ${active?.conc_unit ?? 'mg/L'}`)}

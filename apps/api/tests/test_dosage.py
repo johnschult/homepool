@@ -228,3 +228,19 @@ def test_high_salt_is_guidance_only_dilution():
     option = salt_rec["options"][0]
     assert option["product_id"] is None
     assert option["notes_key"] == "dosage_dilution_required"
+
+
+def test_frog_smartchlor_never_recommends_chlorine_even_if_current_has_a_value():
+    """frog_smartchlor's WATER_PARAMS combo has no "cl" key, so
+    compute_recommendations (which iterates `ranges`, not `current`) must never
+    emit a "cl" recommendation — even if `current` somehow still carries a
+    stray chlorine reading (e.g. from a caller that didn't apply the
+    extract_current_conditions suppression gate)."""
+    installation = make_installation(sanitizer="frog_smartchlor", type="spa", volume=1500, volume_unit="L")
+    ranges = ranges_for(installation)
+    assert "cl" not in ranges
+    current = current_of(ph=7.4, chlorine=0.1, tac=40, hardness=50)
+    recs = compute_recommendations(current, ranges, installation)
+    params = {r["param"] for r in recs}
+    assert "cl" not in params
+    assert "tac" in params

@@ -329,6 +329,98 @@ describe('ActionForm', () => {
     })
   })
 
+  describe('FROG @ease SmartChlor', () => {
+    it('strip mode renders pH/TAC/hardness FROG tiles and the SmartChlor tiles, no chlorine/bromine row', () => {
+      localStorage.setItem('homepool_measure_mode', 'strip')
+      setActiveInstallation(makeInstallation({ sanitizer: 'frog_smartchlor' }))
+      const editAction = makeMesureAction()
+      render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
+
+      expect(screen.getByText('pH')).toBeInTheDocument()
+      expect(screen.getByText('Alcalinité — TAC')).toBeInTheDocument()
+      expect(screen.getByText('Dureté totale')).toBeInTheDocument()
+      expect(screen.getByText(translations.fr.smartchlor_label)).toBeInTheDocument()
+      expect(screen.queryByText('Chlore libre')).not.toBeInTheDocument()
+      expect(screen.queryByText('Brome total')).not.toBeInTheDocument()
+    })
+
+    it('manual mode renders pH/TAC/hardness fields and the SmartChlor tiles, no chlorine field', () => {
+      setActiveInstallation(makeInstallation({ sanitizer: 'frog_smartchlor' }))
+      const editAction = makeMesureAction()
+      render(<ActionForm editAction={editAction} onEdit={vi.fn()} />)
+
+      expect(screen.getByPlaceholderText('7.2')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('120')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('250')).toBeInTheDocument()
+      expect(screen.queryByPlaceholderText('1.5')).not.toBeInTheDocument()
+      expect(screen.getByText(translations.fr.smartchlor_label)).toBeInTheDocument()
+    })
+
+    it('an ad hoc entry with only SmartChlor status set is accepted (no triggeringTaskKey)', () => {
+      setActiveInstallation(makeInstallation({ sanitizer: 'frog_smartchlor' }))
+      const onAdd = vi.fn()
+      render(<ActionForm onAdd={onAdd} />)
+
+      fireEvent.click(screen.getByText(translations.fr.smartchlor_ok))
+      fireEvent.click(screen.getByText('Enregistrer'))
+
+      expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ smartchlor_status: 'ok' }))
+    })
+
+    it('a FROG-strip-check-triggered entry requires a SmartChlor status before it can be saved', () => {
+      setActiveInstallation(makeInstallation({ sanitizer: 'frog_smartchlor' }))
+      const onAdd = vi.fn()
+      render(<ActionForm onAdd={onAdd} triggeringTaskKey="frog_strip_check" />)
+
+      fireEvent.click(screen.getByText('Enregistrer'))
+      expect(onAdd).not.toHaveBeenCalled()
+      expect(screen.getByText(translations.fr.modal_smartchlor_required)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByText(translations.fr.smartchlor_out))
+      fireEvent.click(screen.getByText('Enregistrer'))
+      expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ smartchlor_status: 'out' }))
+    })
+
+    it('a triggeringTaskKey with no required-field mapping keeps the ordinary hasAnyValue rule', () => {
+      setActiveInstallation(makeInstallation({ sanitizer: 'frog_smartchlor' }))
+      const onAdd = vi.fn()
+      render(<ActionForm onAdd={onAdd} triggeringTaskKey="filter_maintenance" />)
+
+      fireEvent.click(screen.getByText('Enregistrer'))
+      expect(onAdd).not.toHaveBeenCalled()
+      expect(screen.getByText(translations.fr.modal_at_least_one)).toBeInTheDocument()
+    })
+
+    it('editing an existing FROG measurement never re-requires the SmartChlor field, even without a value', () => {
+      setActiveInstallation(makeInstallation({ sanitizer: 'frog_smartchlor' }))
+      const editAction = makeMesureAction({ notes: 'TAC: 100' })
+      const onEdit = vi.fn()
+      render(<ActionForm editAction={editAction} onEdit={onEdit} />)
+
+      fireEvent.click(screen.getByText('Enregistrer les modifications'))
+      expect(onEdit).toHaveBeenCalledTimes(1)
+    })
+
+    it('round-trips smartchlor_status and strip_profile directly (real columns, not notes-encoded)', () => {
+      setActiveInstallation(makeInstallation({ sanitizer: 'frog_smartchlor', strip_profile: 'frog_ease' }))
+      const editAction = makeMesureAction({
+        qty: '7.4', smartchlor_status: 'out', strip_profile: 'frog_ease', notes: 'TAC: 100',
+      })
+      const onEdit = vi.fn()
+      render(<ActionForm editAction={editAction} onEdit={onEdit} />)
+
+      fireEvent.click(screen.getByText('Enregistrer les modifications'))
+
+      expect(onEdit).toHaveBeenCalledWith(
+        editAction.id,
+        expect.objectContaining({ smartchlor_status: 'out', strip_profile: 'frog_ease' }),
+      )
+      // Not swept into the free-text notes like the numeric fields are.
+      const [, payload] = onEdit.mock.calls[0]
+      expect(payload.notes).not.toContain('smartchlor')
+    })
+  })
+
   describe('edit mode round-trip (regression: rowFromAction must re-fill every field, not just pH)', () => {
     it('re-populates every device-mode field with its real saved value, not the placeholder', () => {
       setActiveInstallation(makeInstallation({ sanitizer: 'salt', temp_unit: 'F' }))

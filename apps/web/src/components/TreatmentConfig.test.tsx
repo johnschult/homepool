@@ -170,4 +170,23 @@ describe('TreatmentConfig', () => {
       expect(screen.getByText(translations.fr.treat_load_error)).toBeInTheDocument()
     )
   })
+
+  it('offers to add default treatments when the catalog starts empty (opt-in seeding)', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+    render(<TreatmentConfig installation={installation} />)
+
+    await waitFor(() => expect(screen.getByText(translations.fr.treat_empty_title)).toBeInTheDocument())
+    expect(productNames()).toHaveLength(0)
+
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [seeded] } as Response)
+    fireEvent.click(screen.getByText(translations.fr.treat_add_defaults))
+
+    await waitFor(() => expect(productNames()).toHaveLength(1))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/installations/1/treatments/seed-defaults',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(screen.queryByText(translations.fr.treat_empty_title)).not.toBeInTheDocument()
+  })
 })

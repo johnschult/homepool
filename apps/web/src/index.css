@@ -280,6 +280,12 @@ button {
   color: var(--text-primary);
 }
 
+.sidebar-nav-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .sidebar-footer {
   padding: 12px 12px 0;
   border-top: 1px solid var(--border-subtle);
@@ -740,6 +746,12 @@ input[type="checkbox"]:checked::after {
 
 .bn-item.active {
   color: var(--accent);
+}
+
+.bn-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .bn-item svg {

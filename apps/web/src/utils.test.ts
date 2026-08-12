@@ -11,6 +11,7 @@ import {
   getHardnessStatus,
   getWaterStatus,
   extractMeasuredParams,
+  extractSmartChlorStatus,
   installationParamsToRanges,
   getChemistryTodoItems,
   maintenanceTodoItems,
@@ -195,6 +196,59 @@ describe('extractMeasuredParams — regex data-loss regression (bug: greedy trai
     expect(p.hardness).toBe(250)
     expect(p.salt).toBe(3200)
     expect(p.cc).toBe(0.1)
+  })
+})
+
+describe('extractMeasuredParams — sanitizer-gated chlorine suppression', () => {
+  it('suppresses a stale chlorine reading for frog_smartchlor', () => {
+    const actions = [makeAction({ action_type: 'Measurement', notes: 'pH 7.4. chlorine: 3. TAC: 100' })]
+    const p = extractMeasuredParams(actions, 'frog_smartchlor')
+    expect(p.chlorine).toBeNull()
+    expect(p.tac).toBe(100)
+  })
+
+  it('suppresses a stale chlorine reading for bromine (closes the same latent gap)', () => {
+    const actions = [makeAction({ action_type: 'Measurement', notes: 'pH 7.4. chlorine: 3. bromine: 4' })]
+    const p = extractMeasuredParams(actions, 'bromine')
+    expect(p.chlorine).toBeNull()
+    expect(p.bromine).toBe(4)
+  })
+
+  it('keeps chlorine for the chlorine and salt sanitizers', () => {
+    const actions = [makeAction({ action_type: 'Measurement', notes: 'chlorine: 3' })]
+    expect(extractMeasuredParams(actions, 'chlorine').chlorine).toBe(3)
+    expect(extractMeasuredParams(actions, 'salt').chlorine).toBe(3)
+  })
+
+  it('an omitted sanitizer never suppresses chlorine (the safety net for a forgotten call site)', () => {
+    const actions = [makeAction({ action_type: 'Measurement', notes: 'chlorine: 3' })]
+    expect(extractMeasuredParams(actions).chlorine).toBe(3)
+    expect(extractMeasuredParams(actions, undefined).chlorine).toBe(3)
+  })
+
+  it('an unrecognized sanitizer string never suppresses chlorine (falls back to chlorine capabilities)', () => {
+    const actions = [makeAction({ action_type: 'Measurement', notes: 'chlorine: 3' })]
+    expect(extractMeasuredParams(actions, 'not_a_real_sanitizer').chlorine).toBe(3)
+  })
+})
+
+describe('extractSmartChlorStatus', () => {
+  it('returns the newest logged status when several exist', () => {
+    const actions = [
+      makeAction({ id: 1, date: '2026-02-01', action_type: 'Measurement', smartchlor_status: 'ok' }),
+      makeAction({ id: 2, date: '2026-02-10', action_type: 'Measurement', smartchlor_status: 'out' }),
+    ]
+    expect(extractSmartChlorStatus(actions)).toEqual({ status: 'out', date: '2026-02-10' })
+  })
+
+  it('returns null when no measurement has a SmartChlor status', () => {
+    const actions = [makeAction({ action_type: 'Measurement', notes: 'pH 7.4' })]
+    expect(extractSmartChlorStatus(actions)).toBeNull()
+  })
+
+  it('ignores a smartchlor_status on a non-measurement action', () => {
+    const actions = [makeAction({ action_type: 'Add product', smartchlor_status: 'out' })]
+    expect(extractSmartChlorStatus(actions)).toBeNull()
   })
 })
 

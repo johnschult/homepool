@@ -102,8 +102,9 @@ function Pill({ label, color, bg }: { label: string; color: string; bg: string }
 }
 
 function ParamPills({ action }: { action: Action }) {
+  const { t } = useT()
   const { active, ranges } = useInstallation()
-  const p = extractMeasuredParams([action])
+  const p = extractMeasuredParams([action], active?.sanitizer)
   const pills: { label: string; status: 'normal' | 'warn' | 'bad' }[] = []
 
   if (p.ph !== null) {
@@ -117,6 +118,14 @@ function ParamPills({ action }: { action: Action }) {
   }
   if (p.temp !== null) {
     pills.push({ label: `${p.temp.toFixed(1)} °${active?.temp_unit ?? 'C'}`, status: getTempStatus(p.temp, ranges ?? undefined) })
+  }
+  // Never a fabricated numeric FC value — SmartChlor's cartridge status is
+  // categorical, rendered as its own readable pill.
+  if (action.smartchlor_status === 'ok' || action.smartchlor_status === 'out') {
+    pills.push({
+      label: action.smartchlor_status === 'ok' ? t('history_smartchlor_ok') : t('history_smartchlor_out'),
+      status: action.smartchlor_status === 'ok' ? 'normal' : 'bad',
+    })
   }
 
   if (pills.length === 0) return null
@@ -139,7 +148,7 @@ function EntryCard({ action, products, treatments, onEdit, onDelete }: {
   onDelete?: (action: Action) => void
 }) {
   const { t } = useT()
-  const { ranges } = useInstallation()
+  const { active, ranges } = useInstallation()
   const [hovered, setHovered] = useState(false)
   const cat = getCategory(action)
   const title = getTitle(action, products, treatments, t)
@@ -160,7 +169,7 @@ function EntryCard({ action, products, treatments, onEdit, onDelete }: {
   // Status badge (measurement) or type pill (treatment/maintenance)
   let badge: React.ReactNode = null
   if (cat === 'measurement') {
-    const p = extractMeasuredParams([action])
+    const p = extractMeasuredParams([action], active?.sanitizer)
     const { status, hasData } = getWaterStatus({ ph: p.ph, chlorine: p.chlorine, tac: p.tac }, ranges ?? undefined)
     if (hasData) {
       const c = STATUS_CFG[status]

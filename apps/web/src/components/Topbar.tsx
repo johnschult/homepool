@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Sun, Moon, Bath, Waves, Pencil, Plus, Trash2, Home, Activity, Clock, ClipboardList, Wrench, LogOut, ShieldCheck, User as UserIcon } from 'lucide-react'
 import homepoolLogo from '@/assets/homepool-logo.svg'
 import homepoolSidebarLogo from '@/assets/homepool-logo-sidebar.svg'
@@ -7,6 +8,7 @@ import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import type { Locale } from '../i18n/translations'
 import BottomNav from './BottomNav'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 type Page = 'log' | 'measurements' | 'history' | 'recommendations' | 'maintenance'
 
@@ -126,19 +128,32 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
   const { installations, active, setActive, deleteInstallation, isOwner } = useInstallation()
   const { t, locale, setLocale } = useT()
 
+  // Measurements/History/Maintenance/Recommendations have nothing to show
+  // with zero installations — only Dashboard (page 'log') is usable until
+  // the user adds their first pool or spa.
+  const hasInstallations = installations.length > 0
+
   const installationLabel = active?.type === 'spa'
     ? t('my_spa')
     : active?.type === 'pool'
     ? t('my_pool')
     : t('my_installation')
 
-  const handleDeleteInstallation = async () => {
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const confirmDeleteInstallation = async () => {
     if (!active) return
-    if (!window.confirm(t('installation_confirm_delete').replace('{name}', active.name))) return
+    setDeleting(true)
+    setDeleteError(null)
     try {
       await deleteInstallation(active.id)
+      setConfirmingDelete(false)
     } catch {
-      alert(t('installation_delete_error'))
+      setDeleteError(t('installation_delete_error'))
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -203,16 +218,22 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
               {t('nav_new_entry')}
             </button>
           )}
-          {NAV_ITEMS.map(({ page: p, labelKey, Icon }) => (
-            <button
-              key={p}
-              className={`sidebar-nav-item${page === p ? ' active' : ''}`}
-              onClick={() => onNavigate?.(p)}
-            >
-              <Icon size={15} strokeWidth={1.75} aria-hidden="true" />
-              {t(labelKey)}
-            </button>
-          ))}
+          {NAV_ITEMS.map(({ page: p, labelKey, Icon }) => {
+            const disabled = p !== 'log' && !hasInstallations
+            return (
+              <button
+                key={p}
+                className={`sidebar-nav-item${page === p ? ' active' : ''}`}
+                onClick={() => onNavigate?.(p)}
+                disabled={disabled}
+                aria-disabled={disabled}
+                title={disabled ? t('nav_disabled_hint') : undefined}
+              >
+                <Icon size={15} strokeWidth={1.75} aria-hidden="true" />
+                {t(labelKey)}
+              </button>
+            )
+          })}
         </nav>
 
         {/* Footer: installation + preferences + profile */}
@@ -241,6 +262,22 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
                         }}
                       >
                         <Pencil size={12} strokeWidth={1.75} aria-hidden="true" />
+                      </button>
+                    )}
+                    {isOwner && (
+                      <button
+                        type="button"
+                        onClick={() => { setDeleteError(null); setConfirmingDelete(true) }}
+                        aria-label={t('installation_delete')}
+                        title={t('installation_delete')}
+                        style={{
+                          flexShrink: 0, width: 22, height: 22, borderRadius: 'var(--radius-sm)',
+                          background: 'none', border: 'none',
+                          color: 'var(--text-muted)', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        <Trash2 size={12} strokeWidth={1.75} aria-hidden="true" />
                       </button>
                     )}
                   </div>
@@ -287,7 +324,7 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
                   {isOwner && (
                   <button
                     type="button"
-                    onClick={handleDeleteInstallation}
+                    onClick={() => { setDeleteError(null); setConfirmingDelete(true) }}
                     aria-label={t('installation_delete')}
                     title={t('installation_delete')}
                     style={{
@@ -373,8 +410,39 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
 
       {/* ── Mobile bottom nav ───────────────────────────────── */}
       {onAdd && onNavigate && (
-        <BottomNav page={page} onNavigate={onNavigate} onAdd={onAdd} />
+        <BottomNav page={page} onNavigate={onNavigate} onAdd={onAdd} hasInstallations={hasInstallations} />
       )}
+
+      {/* Dialog — delete installation confirmation */}
+      <Dialog open={confirmingDelete} onOpenChange={open => { if (!open) setConfirmingDelete(false) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: '"Sora", sans-serif', fontWeight: 600 }}>
+              {t('installation_delete')}
+            </DialogTitle>
+          </DialogHeader>
+          {active && (
+            <div>
+              <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 20px' }}>
+                {t('installation_confirm_delete').replace('{name}', active.name)}
+              </p>
+              {deleteError && (
+                <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)', margin: '0 0 12px' }}>
+                  {deleteError}
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="btn-ghost" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+                  {t('modal_cancel')}
+                </button>
+                <button className="btn-danger" onClick={confirmDeleteInstallation} disabled={deleting}>
+                  {deleting ? t('modal_install_saving') : t('modal_delete')}
+                </button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

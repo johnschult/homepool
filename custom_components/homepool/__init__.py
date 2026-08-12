@@ -68,6 +68,9 @@ SERVICE_LOG_MEASUREMENT_SCHEMA = vol.Schema(
         vol.Optional("stabilizer"): vol.Coerce(float),
         vol.Optional("cc"): vol.Coerce(float),
         vol.Optional("temp"): vol.Coerce(float),
+        # FROG @ease SmartChlor cartridge status — a categorical indicator,
+        # never a numeric free-chlorine value.
+        vol.Optional("smartchlor_status"): vol.In(["ok", "out"]),
         vol.Optional("notes"): cv.string,
     }
 )

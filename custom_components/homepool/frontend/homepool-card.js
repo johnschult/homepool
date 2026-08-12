@@ -97,6 +97,12 @@ const FORM_FIELD_LABELS = {
   temp: 'T°',
 };
 
+// Kept separate from FORM_FIELD_LABELS: that map's keys are also used to
+// render numeric history pills via fmtValue() (a plain `.toFixed(1)`, which
+// would throw on a categorical string value) — smartchlor_status is
+// deliberately excluded from it and rendered/formatted on its own instead.
+const SMARTCHLOR_FIELD_LABEL = 'SmartChlor';
+
 // Quick-add field set per sanitizer — keeps the default form short and
 // relevant instead of showing every field regardless of pool type. Anything
 // not in the active set is still reachable via the "more fields" toggle.
@@ -106,8 +112,24 @@ const SANITIZER_FORM_FIELDS = {
   chlorine: ['ph', 'chlorine', 'cc', 'tac', 'temp'],
   bromine: ['ph', 'bromine', 'tac', 'temp'],
   salt: ['ph', 'chlorine', 'salt', 'tac', 'temp'],
+  // No numeric free-chlorine field — FROG @ease's SmartChlor cartridge is a
+  // categorical ok/out status, not a manually-dosed reading.
+  frog_smartchlor: ['ph', 'tac', 'hardness', 'smartchlor_status'],
 };
 const DEFAULT_FORM_FIELDS = ['ph', 'chlorine', 'bromine', 'tac', 'temp'];
+
+// Numeric fields hidden from the "more fields" toggle for a given sanitizer,
+// on top of whatever's already in its primary set — frog_smartchlor must
+// never offer a free-chlorine input anywhere in this form, including the
+// optional/advanced fields.
+const SANITIZER_EXCLUDED_FORM_FIELDS = {
+  frog_smartchlor: ['chlorine'],
+};
+
+// select-rendered fields (categorical), everything else is a numeric input.
+const SELECT_FIELD_OPTIONS = {
+  smartchlor_status: ['', 'ok', 'out'],
+};
 
 const STRINGS = {
   en: {
@@ -397,7 +419,7 @@ class HomepoolCard extends HTMLElement {
     const data = { installation_id: this._config.installation_id };
     for (const [k, v] of Object.entries(values)) {
       if (v === '' || v === null || v === undefined) continue;
-      data[k] = k === 'notes' ? v : parseFloat(v);
+      data[k] = (k === 'notes' || k === 'smartchlor_status') ? v : parseFloat(v);
     }
     this._hass.callService('homepool', 'log_measurement', data);
     return true;
@@ -687,13 +709,21 @@ class HomepoolCard extends HTMLElement {
   // toggling it never rebuilds the form and never drops in-progress input.
   _formHtml(hass, sanitizer) {
     const primary = SANITIZER_FORM_FIELDS[sanitizer] || DEFAULT_FORM_FIELDS;
-    const more = Object.keys(FORM_FIELD_LABELS).filter((f) => !primary.includes(f));
-    const fieldInput = (name) => `
+    const excluded = SANITIZER_EXCLUDED_FORM_FIELDS[sanitizer] || [];
+    const more = Object.keys(FORM_FIELD_LABELS).filter((f) => !primary.includes(f) && !excluded.includes(f));
+    const fieldLabel = (name) => name === 'smartchlor_status' ? SMARTCHLOR_FIELD_LABEL : FORM_FIELD_LABELS[name];
+    const fieldInput = (name) => {
+      const options = SELECT_FIELD_OPTIONS[name];
+      const control = options
+        ? `<select name="${name}">${options.map((o) => `<option value="${o}">${o || '–'}</option>`).join('')}</select>`
+        : `<input name="${name}" type="number" step="0.1" inputmode="decimal" />`;
+      return `
       <label class="hp-form-field">
-        <span>${FORM_FIELD_LABELS[name]}</span>
-        <input name="${name}" type="number" step="0.1" inputmode="decimal" />
+        <span>${fieldLabel(name)}</span>
+        ${control}
       </label>
     `;
+    };
     return `
       <form id="hp-form" class="hp-form">
         <div class="hp-form-grid">

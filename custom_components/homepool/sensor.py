@@ -19,6 +19,7 @@ from . import HomepoolConfigEntry
 from .const import DOMAIN, FIELD_META, FIELD_NAMES
 from .coordinator import HomepoolDataUpdateCoordinator
 from .external import external_value, recompute_status, source_entity
+from .smartchlor import smartchlor_status_label
 
 # Fallback icon when a task payload carries no icon of its own.
 DEFAULT_TODO_ICON = "mdi:calendar-clock"
@@ -43,6 +44,13 @@ async def async_setup_entry(
                 HomepoolSensor(
                     coordinator, entry.entry_id, installation_id, field, override
                 )
+            )
+        # FROG @ease SmartChlor cartridge status: a categorical field, not a
+        # FIELD_META entry — see HomepoolSmartChlorSensor. Same "only create
+        # when there's a value" rule as HomepoolSensor above.
+        if installation["fields"].get("smartchlor_status"):
+            entities.append(
+                HomepoolSmartChlorSensor(coordinator, entry.entry_id, installation_id)
             )
         entities.append(
             HomepoolHistorySensor(coordinator, entry.entry_id, installation_id)
@@ -252,6 +260,82 @@ class HomepoolSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], SensorEnt
         if installation and installation.get("sanitizer"):
             attrs["sanitizer"] = installation["sanitizer"]
         return attrs or None
+
+
+class HomepoolSmartChlorSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], SensorEntity):
+    """FROG @ease SmartChlor cartridge status for a single installation.
+
+    A dedicated class rather than a FIELD_META entry: HomepoolSensor's whole
+    pipeline (unit reconciliation, MEASUREMENT state class, external-sensor
+    override) is built for numeric readings, and there's no meaningful
+    "external probe" for a categorical cartridge-status field. Never exposes a
+    fake, guessed, or stale numeric free-chlorine value — "ok"/"out" are the
+    only states.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "SmartChlor"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["ok", "out"]
+    _attr_icon = "mdi:battery-sync"
+
+    def __init__(
+        self,
+        coordinator: HomepoolDataUpdateCoordinator,
+        entry_id: str,
+        installation_id: int,
+    ) -> None:
+        super().__init__(coordinator)
+        self._installation_id = installation_id
+        self._attr_unique_id = f"{entry_id}_{installation_id}_smartchlor_status"
+
+        # Deterministic, area-free entity-id (see issue #42 / HomepoolSensor).
+        name = coordinator.data[installation_id]["name"]
+        self.entity_id = async_generate_entity_id(
+            ENTITY_ID_FORMAT, f"{name} SmartChlor", hass=coordinator.hass
+        )
+
+    @property
+    def _installation(self) -> dict | None:
+        return self.coordinator.data.get(self._installation_id)
+
+    @property
+    def _value(self) -> dict | None:
+        installation = self._installation
+        if not installation:
+            return None
+        return installation["fields"].get("smartchlor_status")
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        installation = self._installation
+        if not installation:
+            return None
+        return DeviceInfo(
+            identifiers={(DOMAIN, str(self._installation_id))},
+            name=installation["name"],
+            manufacturer="homepool",
+            model=installation["type"].capitalize(),
+        )
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._value is not None
+
+    @property
+    def native_value(self) -> str | None:
+        value = self._value
+        return value["status"] if value else None
+
+    @property
+    def extra_state_attributes(self) -> dict | None:
+        value = self._value
+        if not value:
+            return None
+        return {
+            "date": value.get("date"),
+            "status_text": smartchlor_status_label(value.get("status")),
+        }
 
 
 class HomepoolTodoSensor(CoordinatorEntity[HomepoolDataUpdateCoordinator], SensorEntity):

@@ -120,6 +120,17 @@ def test_create_measurement_forwards_date_and_drops_empty_fields() -> None:
     )
 
 
+def test_create_measurement_forwards_smartchlor_status_with_no_numeric_fields() -> None:
+    """FROG @ease SmartChlor: the client is a generic passthrough, so a
+    cartridge status with no numeric fields must reach the server as-is."""
+    client, post = _capture_post()
+    asyncio.run(client.create_measurement(3, smartchlor_status="ok"))
+    assert post.await_args.args == (
+        "/v1/measurements",
+        {"installation_id": 3, "smartchlor_status": "ok"},
+    )
+
+
 def _capture_get() -> tuple[HomepoolClient, MagicMock]:
     """A client whose _get is captured instead of hitting the network."""
     client = HomepoolClient(MagicMock(), "https://example.test", "key")

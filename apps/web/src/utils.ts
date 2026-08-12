@@ -1,6 +1,8 @@
 import type { Action, Installation, InstallationWaterParams, MaintenanceTask } from './types'
 import { convertRange, metricToDisplayConverter } from './units'
 import type { TranslationKey } from './i18n/translations'
+import type { SmartChlorStatus } from './sanitizer'
+import { sanitizerCapabilities } from './sanitizer'
 
 // ── Water status ──────────────────────────────────────────────────────────────
 
@@ -250,8 +252,18 @@ export type TodoItem = {
 /**
  * Extracts the most recent measured values for pH, chlorine, TAC and temperature
  * from the action log. Also returns the date of the most recent contributing entry.
+ *
+ * `sanitizer` gates free chlorine: a sanitizer that doesn't track a numeric FC
+ * target (frog_smartchlor, and bromine) must never surface a *stale* chlorine
+ * reading left over from before a sanitizer switch, no matter how recent the
+ * action — mirrors the same gate in apps/api/water_params.py's
+ * extract_current_conditions. An omitted sanitizer MUST default to tracking
+ * chlorine (never silently suppress it) — this is the safety net for any call
+ * site that forgets to pass one; see sanitizerCapabilities.
  */
-export function extractMeasuredParams(actions: Action[]): MeasuredParams {
+export function extractMeasuredParams(actions: Action[], sanitizer?: string): MeasuredParams {
+  const trackChlorine = sanitizerCapabilities(sanitizer).requiresNumericFreeChlorine
+    || sanitizerCapabilities(sanitizer).supportsFreeChlorineTarget
   const sorted = [...actions].sort((a, b) => b.date.localeCompare(a.date))
   let ph: number | null = null
   let chlorine: number | null = null
@@ -278,7 +290,7 @@ export function extractMeasuredParams(actions: Action[]): MeasuredParams {
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { ph = v; contributed = true } }
     }
     // Free chlorine
-    if (chlorine === null && action.notes) {
+    if (trackChlorine && chlorine === null && action.notes) {
       const m = action.notes.match(RX_CHLORINE)
       if (m) { const v = parseFloat(m[1]); if (!isNaN(v)) { chlorine = v; contributed = true } }
     }
@@ -322,12 +334,26 @@ export function extractMeasuredParams(actions: Action[]): MeasuredParams {
     if (contributed && date === null) date = action.date
 
     if (
-      ph !== null && chlorine !== null && tac !== null && temp !== null &&
+      ph !== null && (chlorine !== null || !trackChlorine) && tac !== null && temp !== null &&
       bromine !== null && hardness !== null && salt !== null && stabilizer !== null && cc !== null
     ) break
   }
 
   return { ph, chlorine, tac, temp, bromine, hardness, salt, stabilizer, cc, date }
+}
+
+/**
+ * Most recent logged SmartChlor cartridge status (FROG @ease), newest-first.
+ * Returns null if never checked. Mirrors apps/api/water_params.py's
+ * extract_current_smartchlor_status.
+ */
+export function extractSmartChlorStatus(actions: Action[]): { status: SmartChlorStatus; date: string } | null {
+  for (const a of [...actions].sort((x, y) => y.date.localeCompare(x.date))) {
+    if (MEASURE_ACTION_TYPES.includes(a.action_type) && (a.smartchlor_status === 'ok' || a.smartchlor_status === 'out')) {
+      return { status: a.smartchlor_status, date: a.date }
+    }
+  }
+  return null
 }
 
 function inRange(v: number, [min, max]: [number, number]): boolean {

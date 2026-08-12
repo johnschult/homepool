@@ -46,7 +46,7 @@ class Installation(SQLModel, table=True):
     user_id: int = Field(foreign_key="user.id", index=True)
     name: str = Field(default="My pool")
     type: str = Field(default="pool")           # "pool" | "spa"
-    sanitizer: str = Field(default="bromine")   # "bromine" | "chlorine" | "salt"
+    sanitizer: str = Field(default="bromine")   # "bromine" | "chlorine" | "salt" | "frog_smartchlor"
     volume: Optional[float] = Field(default=None)
     volume_unit: str = Field(default="L")       # "L" | "gal"
     temp_unit: str = Field(default="C")         # "C" | "F"
@@ -64,6 +64,10 @@ class Installation(SQLModel, table=True):
     # {"ph": {"ideal": [7.0, 7.6]}}. NULL/{} = no customization. Values are always
     # stored in canonical/metric units, independent of temp_unit/salt_unit/hardness_unit.
     range_overrides: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Which test-strip/method profile this installation's owner uses at entry
+    # time. NULL = "aquachek" (every installation created before this field
+    # existed, and the default for chlorine/bromine/salt going forward too).
+    strip_profile: Optional[str] = Field(default=None)  # "aquachek" | "frog_ease"
     created_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -179,4 +183,14 @@ class Action(SQLModel, table=True):
     # brand "HTH Super". Only meaningful on treatments.
     brand: str = ""
     notes: str = ""
+    # Only meaningful on Measurement rows. Which strip/test-method profile was
+    # active when this row was logged — snapshotted (like treatment_label) so
+    # an old entry keeps rendering with the tiles it was actually taken
+    # against even if the installation's profile changes later.
+    strip_profile: Optional[str] = Field(default=None)      # "aquachek" | "frog_ease"
+    # SmartChlor cartridge status read off a FROG @ease strip. A real column,
+    # not notes-text-encoded like the other measured fields: it's categorical,
+    # not a float the FIELDS/RX_* scheme can parse, and there's no legacy
+    # notes format to stay compatible with.
+    smartchlor_status: Optional[str] = Field(default=None)  # "ok" | "out"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

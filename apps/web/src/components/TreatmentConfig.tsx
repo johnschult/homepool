@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Trash2, Plus } from 'lucide-react'
+import { Trash2, Plus, Beaker } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -93,6 +93,26 @@ export default function TreatmentConfig({ installation, onSaved }: Props) {
   const [newLabel, setNewLabel] = useState('')
   const [newUnit, setNewUnit] = useState(TREATMENT_UNITS[0])
   const [newIcon, setNewIcon] = useState(DEFAULT_TREATMENT_ICON)
+  const [addingDefaults, setAddingDefaults] = useState(false)
+  const [addDefaultsError, setAddDefaultsError] = useState(false)
+
+  const applyLoadedCatalog = (data: TreatmentProduct[]) => {
+    setOriginal(Object.fromEntries(data.map(p => [p.id, p])))
+    setDraft(data.map(p => {
+      const label = treatmentProductLabel(p, t)
+      return {
+        id: p.id,
+        label,
+        initialLabel: label,
+        icon: p.icon,
+        default_unit: p.default_unit,
+        param: p.param,
+        enabled: p.enabled,
+        isNew: false,
+        deleted: false,
+      }
+    }))
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -100,29 +120,35 @@ export default function TreatmentConfig({ installation, onSaved }: Props) {
     setSaveError(false)
     fetch(`/api/installations/${installation.id}/treatments`, { credentials: 'same-origin' })
       .then(r => { if (!r.ok) throw new Error('failed'); return r.json() })
-      .then((data: TreatmentProduct[]) => {
-        setOriginal(Object.fromEntries(data.map(p => [p.id, p])))
-        setDraft(data.map(p => {
-          const label = treatmentProductLabel(p, t)
-          return {
-            id: p.id,
-            label,
-            initialLabel: label,
-            icon: p.icon,
-            default_unit: p.default_unit,
-            param: p.param,
-            enabled: p.enabled,
-            isNew: false,
-            deleted: false,
-          }
-        }))
-      })
+      .then(applyLoadedCatalog)
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
     // `t` is stable per locale; re-running on a locale switch would clobber
     // pending edits, so it is deliberately not a dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [installation.id])
+
+  // Treatment products are opt-in now: a fresh installation starts with an
+  // empty catalog (see apps/api/main.py's register()/create_installation()),
+  // and this is the explicit "give me homepool's suggested starting set"
+  // action instead of it happening silently at creation.
+  const addDefaultTreatments = async () => {
+    setAddingDefaults(true)
+    setAddDefaultsError(false)
+    try {
+      const res = await fetch(`/api/installations/${installation.id}/treatments/seed-defaults`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      })
+      if (!res.ok) throw new Error('failed')
+      const data: TreatmentProduct[] = await res.json()
+      applyLoadedCatalog(data)
+    } catch {
+      setAddDefaultsError(true)
+    } finally {
+      setAddingDefaults(false)
+    }
+  }
 
   const patchRow = (id: number, patch: Partial<DraftProduct>) => {
     setDraft(prev => prev.map(row => row.id === id ? { ...row, ...patch } : row))
@@ -240,6 +266,30 @@ export default function TreatmentConfig({ installation, onSaved }: Props) {
       )}
       {loadError && (
         <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--status-danger-text)' }}>{t('treat_load_error')}</p>
+      )}
+
+      {!loading && !loadError && rows.length === 0 && (
+        <div style={{
+          textAlign: 'center', padding: '20px 12px', marginBottom: 8,
+          background: 'var(--bg-surface-2)', borderRadius: 'var(--radius-md)',
+        }}>
+          <Beaker size={22} strokeWidth={1.5} style={{ color: 'var(--accent)', marginBottom: 8 }} aria-hidden="true" />
+          <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+            {t('treat_empty_title')}
+          </div>
+          <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--text-secondary)', margin: '4px auto 12px', maxWidth: 320 }}>
+            {t('treat_add_defaults_hint')}
+          </p>
+          <Button type="button" onClick={addDefaultTreatments} disabled={addingDefaults}>
+            <Plus size={14} strokeWidth={2} aria-hidden="true" />
+            {addingDefaults ? t('treat_saving') : t('treat_add_defaults')}
+          </Button>
+          {addDefaultsError && (
+            <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, color: 'var(--status-danger-text)', margin: '8px 0 0' }}>
+              {t('treat_add_defaults_error')}
+            </p>
+          )}
+        </div>
       )}
 
       {!loading && !loadError && (
