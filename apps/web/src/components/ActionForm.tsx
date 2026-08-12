@@ -349,7 +349,10 @@ const BAND_HARDNESS_FROG_BASE: BandParamBase = {
 
 function getBandParams(profile: StripProfileId, sanitizer: SanitizerType, t: (key: TranslationKey) => string): BandParam[] {
   if (profile === 'frog_ease') {
-    return [BAND_PH_FROG_BASE, BAND_TAC_FROG_BASE, BAND_HARDNESS_FROG_BASE].map(b => buildBandParam(b, t))
+    // TAC before pH — TA is the pH buffer, so it's read/addressed first,
+    // matching the FROG strip's own pad order and the same TA-before-pH
+    // ordering already used for dosing recommendations.
+    return [BAND_TAC_FROG_BASE, BAND_PH_FROG_BASE, BAND_HARDNESS_FROG_BASE].map(b => buildBandParam(b, t))
   }
   const sanitizerBase = sanitizer === 'bromine' ? BAND_BROMINE_BASE : sanitizer === 'salt' ? BAND_CHLORINE_SALT_BASE : BAND_CHLORINE_BASE
   return [BAND_PH_BASE, BAND_TAC_BASE, sanitizerBase, BAND_HARDNESS_BASE].map(b => buildBandParam(b, t))
@@ -417,6 +420,16 @@ function StripMode({ values, onChange, sanitizer, profile, smartchlorInvalid }: 
       <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
         {t('modal_compare')}
       </div>
+
+      {/* SmartChlor cartridge status leads the strip — it's the first thing
+          the FROG strip check calls out, ahead of the TAC/pH/hardness pads. */}
+      {showSmartChlor && (
+        <SmartChlorTiles
+          value={values.m_smartchlor_status}
+          onChange={v => onChange({ m_smartchlor_status: v })}
+          invalid={smartchlorInvalid}
+        />
+      )}
 
       {BAND_PARAMS.map(p => {
         const selValue = parseFloat(values[p.key])
@@ -503,14 +516,6 @@ function StripMode({ values, onChange, sanitizer, profile, smartchlorInvalid }: 
           </div>
         )
       })}
-
-      {showSmartChlor && (
-        <SmartChlorTiles
-          value={values.m_smartchlor_status}
-          onChange={v => onChange({ m_smartchlor_status: v })}
-          invalid={smartchlorInvalid}
-        />
-      )}
 
       {/* Summary */}
       {summaryItems.length > 0 && (
@@ -626,10 +631,11 @@ function getDeviceFields(
   }
   if (sanitizer === 'frog_smartchlor') {
     // No numeric free-chlorine field — SmartChlor cartridge status is a
-    // separate categorical control (see DeviceMode), never a typed number.
+    // separate categorical control (see DeviceMode). TAC before pH, matching
+    // the strip mode's pad order and the FROG strip itself.
     return [
-      phField,
       tacField,
+      phField,
       hardnessField,
       tempField,
     ]
@@ -685,6 +691,13 @@ function DeviceMode({ values, onChange, sanitizer, smartchlorInvalid }: DevicePr
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+    {showSmartChlor && (
+      <SmartChlorTiles
+        value={values.m_smartchlor_status}
+        onChange={v => onChange({ m_smartchlor_status: v })}
+        invalid={smartchlorInvalid}
+      />
+    )}
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
       {DEVICE_FIELDS.map(f => {
         const val = values[f.key]
@@ -723,13 +736,6 @@ function DeviceMode({ values, onChange, sanitizer, smartchlorInvalid }: DevicePr
         )
       })}
     </div>
-    {showSmartChlor && (
-      <SmartChlorTiles
-        value={values.m_smartchlor_status}
-        onChange={v => onChange({ m_smartchlor_status: v })}
-        invalid={smartchlorInvalid}
-      />
-    )}
     </div>
   )
 }
