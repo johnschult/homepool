@@ -489,7 +489,12 @@ function AttentionPanel({
           {t('attention_all_ok')}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        // Bounded height with internal scroll — this list grows with however
+        // many maintenance tasks/recommendations are outstanding, and it sits
+        // next to the pH trend chart (a fixed ~150px). Without a cap, more
+        // overdue tasks would keep pulling the two cards further out of sync
+        // instead of just scrolling within its own card.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 220, overflowY: 'auto' }}>
           {todoItems.map(item => {
             const Icon = KIND_ICON[item.kind]
             const color = item.isOverdue ? 'var(--status-danger-text)' : 'var(--status-warn-text)'
