@@ -183,6 +183,10 @@ export default function MeasurementsPage({ actions }: Props) {
       .filter(r => r.ph !== null || r.chlorine !== null || r.tac !== null || r.temp !== null || r.smartchlorStatus !== null)
   , [filtered, sanitizer])
 
+  // Most test strips don't cover temperature — an always-empty column for an
+  // installation that never logs it is just dead weight in the table.
+  const hasTempData = useMemo(() => tableRows.some(r => r.temp !== null), [tableRows])
+
   // ── Trend sub-text ────────────────────────────────────────────────────────
   function trendNode() {
     if (!phTrend) return <span style={kpiSub}>{t('measurements_not_enough_data')}</span>
@@ -375,7 +379,7 @@ export default function MeasurementsPage({ actions }: Props) {
                   <th style={{ ...numTh, textAlign: 'right' }}>{t('param_ph')}</th>
                   <th style={{ ...numTh, textAlign: 'right' }}>{showSmartChlor ? t('dash_smartchlor_title') : t('param_chlorine')}</th>
                   <th style={{ ...numTh, textAlign: 'right' }}>{t('param_tac')}</th>
-                  <th style={{ ...numTh, textAlign: 'right' }}>{t('param_temp_label')}</th>
+                  {hasTempData && <th style={{ ...numTh, textAlign: 'right' }}>{t('param_temp_label')}</th>}
                   <th style={{ ...numTh, textAlign: 'left', paddingLeft: 12 }}>{t('measurements_status')}</th>
                 </tr>
               </thead>
@@ -403,9 +407,11 @@ export default function MeasurementsPage({ actions }: Props) {
                     <td style={{ padding: '9px 8px 9px 0', textAlign: 'right' }}>
                       {cellValue(tac, v => getTacStatus(v, ranges ?? undefined), v => `${Math.round(v)} ${active?.conc_unit ?? 'mg/L'}`)}
                     </td>
-                    <td style={{ padding: '9px 8px 9px 0', textAlign: 'right' }}>
-                      {cellValue(temp, v => getTempStatus(v, ranges ?? undefined), v => `${v.toFixed(1)} °${active?.temp_unit ?? 'C'}`)}
-                    </td>
+                    {hasTempData && (
+                      <td style={{ padding: '9px 8px 9px 0', textAlign: 'right' }}>
+                        {cellValue(temp, v => getTempStatus(v, ranges ?? undefined), v => `${v.toFixed(1)} °${active?.temp_unit ?? 'C'}`)}
+                      </td>
+                    )}
                     <td style={{ padding: '9px 8px 9px 12px' }}>
                       <StatusBadge ph={ph} chlorine={chlorine} tac={tac} ranges={ranges ?? undefined} />
                     </td>
