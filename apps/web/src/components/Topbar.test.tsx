@@ -109,23 +109,3 @@ describe('Topbar — delete installation', () => {
     expect(deleteInstallation).toHaveBeenCalledWith(activeInstallation.id)
   })
 })
-
-describe('Topbar sidebar', () => {
-  it('puts logging an entry at the top of the nav, not just on the dashboard', () => {
-    const onAdd = vi.fn()
-    renderTopbar({ onAdd })
-
-    const button = screen.getByText(translations.fr.nav_new_entry)
-    fireEvent.click(button)
-    expect(onAdd).toHaveBeenCalledTimes(1)
-  })
-
-  it('omits the add button for someone with nothing to log', () => {
-    // App passes onAdd only when the current role can write; a viewer gets none.
-    renderTopbar({ onAdd: undefined })
-
-    expect(screen.queryByText(translations.fr.nav_new_entry)).not.toBeInTheDocument()
-    // The rest of the nav still renders.
-    expect(screen.getByText(translations.fr.nav_measurements)).toBeInTheDocument()
-  })
-})

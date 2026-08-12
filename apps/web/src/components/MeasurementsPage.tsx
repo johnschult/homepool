@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { TrendingUp, TrendingDown, MoveRight, ListChecks, FlaskConical, CalendarCheck, LineChart, Table2 } from 'lucide-react'
+import { TrendingUp, TrendingDown, MoveRight, ListChecks, FlaskConical, CalendarCheck, LineChart, Table2, Plus } from 'lucide-react'
 import type { Action } from '../types'
 import {
   PARAM_RANGES,
@@ -123,9 +123,13 @@ const kpiSub: React.CSSProperties = {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-type Props = { actions: Action[] }
+type Props = {
+  actions: Action[]
+  /** Opens the entry form. Absent for viewers, who have nothing to log. */
+  onAdd?: () => void
+}
 
-export default function MeasurementsPage({ actions }: Props) {
+export default function MeasurementsPage({ actions, onAdd }: Props) {
   const { t, locale } = useT()
   const { active, ranges } = useInstallation()
   const sanitizer = active?.sanitizer ?? 'chlorine'
@@ -240,6 +244,12 @@ export default function MeasurementsPage({ actions }: Props) {
               </button>
             ))}
           </div>
+          {onAdd && (
+            <button className="btn-primary" onClick={onAdd}>
+              <Plus size={15} strokeWidth={2} />
+              {t('nav_new_entry_aria')}
+            </button>
+          )}
         </div>
       </div>
 

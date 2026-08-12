@@ -230,7 +230,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
 
       <main className="main-content">
         {effectivePage === 'measurements'
-          ? <MeasurementsPage actions={actions} />
+          ? <MeasurementsPage actions={actions} onAdd={canEdit ? () => openEntryForm('measurement') : undefined} />
           : effectivePage === 'history'
           ? <HistoryPage actions={actions} products={products} onEdit={canEdit ? setEditingAction : undefined} onDelete={canEdit ? setDeletingAction : undefined} />
           : effectivePage === 'recommendations'
