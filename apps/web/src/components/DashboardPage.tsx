@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTriangle, ChevronRight, Droplets, Check } from 'lucide-react'
+import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTriangle, ChevronRight, Droplets, Check, LineChart, History } from 'lucide-react'
 import type { Action, Product, RecommendationsResponse, MaintenanceTask } from '../types'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
@@ -22,6 +22,8 @@ import {
   getChemistryTodoItems,
   maintenanceTodoItems,
   translateLabel,
+  stripMeasurementNotes,
+  MEASURE_ACTION_TYPES,
   type TodoItem,
   type ParamStatus,
   type HistoryParamKey,
@@ -46,6 +48,12 @@ function statusColor(s: ParamStatus): string {
   if (s === 'normal') return 'var(--status-ok-text)'
   if (s === 'warn') return 'var(--status-warn-text)'
   return 'var(--status-danger-text)'
+}
+
+const sectionTitleRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
 }
 
 type Props = {
@@ -313,7 +321,10 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
                 leftover space below the title instead of pinned to the top
                 with a dead gap under it. */}
             <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column' }}>
-              <div className="section-title" style={{ marginBottom: 8, flexShrink: 0 }}>{t('graph_ph_trend')}</div>
+              <div className="section-title" style={{ ...sectionTitleRow, marginBottom: 8, flexShrink: 0 }}>
+                <LineChart size={13} strokeWidth={1.75} aria-hidden="true" />
+                {t('graph_ph_trend')}
+              </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <TrendChart
                   points={phHistory}
@@ -332,7 +343,10 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
           {/* ── Recent activity ─────────────────────────────────────────────── */}
           <div className="card" style={{ padding: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div className="section-title" style={{ margin: 0 }}>{t('table_recent_history')}</div>
+              <div className="section-title" style={{ ...sectionTitleRow, margin: 0 }}>
+                <History size={13} strokeWidth={1.75} aria-hidden="true" />
+                {t('table_recent_history')}
+              </div>
               <button
                 onClick={() => onNavigate?.('history')}
                 style={{
@@ -373,7 +387,12 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
                       <ActionParamPills action={action} />
                     </td>
                     <td className="history-col-notes" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {action.notes || '—'}
+                      {/* Measurement notes carry auto-generated "TAC: 80.
+                          hardness: 250" text (see ActionForm's buildPayload)
+                          alongside whatever the user actually typed — strip
+                          it here too, or a measurement with no real notes
+                          looks like it has some. */}
+                      {(MEASURE_ACTION_TYPES.includes(action.action_type) ? stripMeasurementNotes(action.notes) : action.notes) || '—'}
                     </td>
                     <td style={{ width: 56 }}>
                       <div className="row-actions" style={{ display: 'flex', gap: 2, opacity: hoveredRowId === action.id ? 1 : 0, transition: 'opacity 0.15s' }}>
@@ -481,7 +500,10 @@ function AttentionPanel({
 
   return (
     <div className="card" style={{ padding: 16 }}>
-      <div className="section-title" style={{ marginBottom: 12 }}>{t('attention_title')}</div>
+      <div className="section-title" style={{ ...sectionTitleRow, marginBottom: 12 }}>
+        <AlertTriangle size={13} strokeWidth={1.75} aria-hidden="true" />
+        {t('attention_title')}
+      </div>
 
       {isEmpty ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--status-ok-text)', fontFamily: '"Sora", sans-serif', fontSize: 13, padding: '8px 0' }}>
@@ -608,6 +630,10 @@ function ActionParamPills({ action }: { action: Action }) {
   if (p.temp !== null) {
     const s = getTempStatus(p.temp, ranges ?? undefined)
     pills.push({ label: `T° ${p.temp.toFixed(1)} °${active?.temp_unit ?? 'C'}`, ...styleMap[s] })
+  }
+  if (p.hardness !== null) {
+    const s = getHardnessStatus(p.hardness, ranges ?? undefined)
+    pills.push({ label: `${t('param_hardness_short')} ${Math.round(p.hardness)} ${active?.hardness_unit ?? 'ppm'}`, ...styleMap[s] })
   }
   if (action.smartchlor_status === 'ok' || action.smartchlor_status === 'out') {
     pills.push(action.smartchlor_status === 'ok'

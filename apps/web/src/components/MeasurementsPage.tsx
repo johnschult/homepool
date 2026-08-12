@@ -8,6 +8,7 @@ import {
   getChlorineStatus,
   getTacStatus,
   getTempStatus,
+  getHardnessStatus,
   getFilteredMeasureActions,
   getParamHistory,
   getPhTrend,
@@ -178,14 +179,15 @@ export default function MeasurementsPage({ actions }: Props) {
     filtered
       .map(a => {
         const p = extractMeasuredParams([a], sanitizer)
-        return { action: a, ph: p.ph, chlorine: p.chlorine, tac: p.tac, temp: p.temp, smartchlorStatus: a.smartchlor_status ?? null }
+        return { action: a, ph: p.ph, chlorine: p.chlorine, tac: p.tac, temp: p.temp, hardness: p.hardness, smartchlorStatus: a.smartchlor_status ?? null }
       })
-      .filter(r => r.ph !== null || r.chlorine !== null || r.tac !== null || r.temp !== null || r.smartchlorStatus !== null)
+      .filter(r => r.ph !== null || r.chlorine !== null || r.tac !== null || r.temp !== null || r.hardness !== null || r.smartchlorStatus !== null)
   , [filtered, sanitizer])
 
   // Most test strips don't cover temperature — an always-empty column for an
   // installation that never logs it is just dead weight in the table.
   const hasTempData = useMemo(() => tableRows.some(r => r.temp !== null), [tableRows])
+  const hasHardnessData = useMemo(() => tableRows.some(r => r.hardness !== null), [tableRows])
 
   // ── Trend sub-text ────────────────────────────────────────────────────────
   function trendNode() {
@@ -380,11 +382,12 @@ export default function MeasurementsPage({ actions }: Props) {
                   <th style={{ ...numTh, textAlign: 'right' }}>{showSmartChlor ? t('dash_smartchlor_title') : t('param_chlorine')}</th>
                   <th style={{ ...numTh, textAlign: 'right' }}>{t('param_tac')}</th>
                   {hasTempData && <th style={{ ...numTh, textAlign: 'right' }}>{t('param_temp_label')}</th>}
+                  {hasHardnessData && <th style={{ ...numTh, textAlign: 'right' }}>{t('param_hardness_short')}</th>}
                   <th style={{ ...numTh, textAlign: 'left', paddingLeft: 12 }}>{t('measurements_status')}</th>
                 </tr>
               </thead>
               <tbody>
-                {tableRows.map(({ action, ph, chlorine, tac, temp, smartchlorStatus }) => (
+                {tableRows.map(({ action, ph, chlorine, tac, temp, hardness, smartchlorStatus }) => (
                   <tr key={action.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td style={{ padding: '9px 8px 9px 0', fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                       {formatShort(action.date)}
@@ -410,6 +413,11 @@ export default function MeasurementsPage({ actions }: Props) {
                     {hasTempData && (
                       <td style={{ padding: '9px 8px 9px 0', textAlign: 'right' }}>
                         {cellValue(temp, v => getTempStatus(v, ranges ?? undefined), v => `${v.toFixed(1)} °${active?.temp_unit ?? 'C'}`)}
+                      </td>
+                    )}
+                    {hasHardnessData && (
+                      <td style={{ padding: '9px 8px 9px 0', textAlign: 'right' }}>
+                        {cellValue(hardness, v => getHardnessStatus(v, ranges ?? undefined), v => `${Math.round(v)} ${active?.hardness_unit ?? 'ppm'}`)}
                       </td>
                     )}
                     <td style={{ padding: '9px 8px 9px 12px' }}>

@@ -356,6 +356,27 @@ export function extractSmartChlorStatus(actions: Action[]): { status: SmartChlor
   return null
 }
 
+/**
+ * Strips the auto-generated "key: value" measurement fields (see
+ * ActionForm's buildPayload) out of an action's notes, leaving only what the
+ * user actually typed. Every place that displays notes as free text — not
+ * just the edit form — needs this, otherwise a measurement with no user
+ * notes at all still shows "TAC: 80. hardness: 250" as if someone wrote it.
+ */
+export function stripMeasurementNotes(notes: string): string {
+  return notes
+    .replace(/bromine\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/hardness\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/salt\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/stabilizer\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/combined\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/temperature?\s*:\s*[\d.]+\.?\s*/gi, '')
+    .replace(/^[\s.]+/, '')
+    .trim()
+}
+
 function inRange(v: number, [min, max]: [number, number]): boolean {
   return v >= min && v <= max
 }

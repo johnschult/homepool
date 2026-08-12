@@ -353,6 +353,7 @@ export const translations = {
 
     // Paramètres additionnels
     param_hardness: 'Dureté totale',
+    param_hardness_short: 'Dureté',
     param_cc: 'Chlore combiné (CC)',
     param_stabilizer: 'Stabilisant (CYA)',
     band_tac_alkalinity: 'Alcalinité — TAC',
@@ -950,6 +951,7 @@ export const translations = {
 
     // Paramètres additionnels
     param_hardness: 'Total hardness',
+    param_hardness_short: 'Hardness',
     param_cc: 'Combined chlorine (CC)',
     param_stabilizer: 'Stabilizer (CYA)',
     band_tac_alkalinity: 'Alkalinity — TAC',

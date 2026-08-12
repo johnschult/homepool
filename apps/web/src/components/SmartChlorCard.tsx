@@ -41,30 +41,19 @@ export default function SmartChlorCard({ status, lastCheckedDate, onClick, varia
     return prefix ? `${prefix.toLowerCase()} ${days} ${t('kpi_day_abbr')}` : `${days} ${t('kpi_day_abbr')}`
   })()
 
-  return (
-    <button
-      className="param-tile"
-      onClick={onClick}
-      style={{
-        '--tile-rail': rail, opacity: status !== null ? 1 : 0.6,
-        // The 'card' variant sits in a grid row next to the pH trend chart,
-        // which is much taller — grid row-stretch fills this button to match
-        // that height, so its (much shorter) content is centered rather than
-        // left pinned to the top with a dead gap below it. 'tile' variant
-        // skips this: it sits among same-height ParamTile siblings that use
-        // plain block flow, so it stays byte-identical to them.
-        ...(isTile ? {} : { display: 'flex', flexDirection: 'column', justifyContent: 'center' }),
-        ...style,
-      } as React.CSSProperties}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {t(isTile ? 'dash_smartchlor_title_short' : 'dash_smartchlor_title')}
-        </span>
-        {status !== null && (
-          <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: rail, flexShrink: 0 }} />
-        )}
-      </div>
+  const labelRow = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+      <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {t(isTile ? 'dash_smartchlor_title_short' : 'dash_smartchlor_title')}
+      </span>
+      {status !== null && (
+        <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: rail, flexShrink: 0 }} />
+      )}
+    </div>
+  )
+
+  const valueBlock = (
+    <>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, margin: '6px 0 2px' }}>
         <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 22, fontWeight: 500, color: status !== null ? rail : 'var(--text-primary)', lineHeight: 1.1 }}>
           {valueText}
@@ -73,7 +62,47 @@ export default function SmartChlorCard({ status, lastCheckedDate, onClick, varia
       <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, color: 'var(--text-muted)' }}>
         {subText}
       </div>
-      {!isTile && (
+    </>
+  )
+
+  if (isTile) {
+    return (
+      <button
+        className="param-tile"
+        onClick={onClick}
+        style={{ '--tile-rail': rail, opacity: status !== null ? 1 : 0.6, display: 'flex', flexDirection: 'column', ...style } as React.CSSProperties}
+      >
+        {labelRow}
+        {/* ParamTile siblings grow taller once they have a sparkline (2+
+            history points) — this tile has no chart to fill that same
+            space, so the value/sub-label center in whatever's left below
+            the label instead of being stranded at the top. The label row
+            above stays put, so it keeps lining up with siblings' labels. */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          {valueBlock}
+        </div>
+      </button>
+    )
+  }
+
+  return (
+    <button
+      className="param-tile"
+      onClick={onClick}
+      style={{
+        '--tile-rail': rail, opacity: status !== null ? 1 : 0.6,
+        // This card sits in a grid row next to the pH trend chart, which is
+        // much taller — grid row-stretch fills this button to match that
+        // height. The title stays pinned at the top (matching the pH trend
+        // card's title, which never moves), and only the value/status block
+        // below it centers in the leftover space.
+        display: 'flex', flexDirection: 'column',
+        ...style,
+      } as React.CSSProperties}
+    >
+      {labelRow}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        {valueBlock}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 8 }}>
           {lastCheckedLabel ? (
             <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, color: 'var(--text-muted)' }}>
@@ -94,7 +123,7 @@ export default function SmartChlorCard({ status, lastCheckedDate, onClick, varia
             {t('strip_profile_frog_ease')}
           </span>
         </div>
-      )}
+      </div>
     </button>
   )
 }

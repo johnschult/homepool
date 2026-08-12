@@ -35,6 +35,7 @@ import {
   RX_STABILIZER,
   RX_CC,
   RX_TEMP,
+  stripMeasurementNotes,
   type DynamicRanges,
   type MaintenanceOption,
 } from '../utils'
@@ -951,21 +952,6 @@ export type EntryKind = 'measurement' | 'treatment' | 'maintenance'
 
 type NewAction = Omit<Action, 'id' | 'created_at' | 'user_id'>
 
-/** Strips the structured `key: value` measurement fields toPayload writes into
- * notes, leaving only what the user actually typed. */
-function stripMeasurementNotes(notes: string): string {
-  return notes
-    .replace(/bromine\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/chlorine?\s*(?:free)?\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/TAC\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/hardness\s*(?:total)?\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/salt\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/stabilizer\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/combined\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/temperature?\s*:\s*[\d.]+\.?\s*/gi, '')
-    .replace(/^[\s.]+/, '')
-    .trim()
-}
 
 type Props = {
   onAdd?: (action: NewAction) => void
