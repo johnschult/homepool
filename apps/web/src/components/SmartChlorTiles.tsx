@@ -38,12 +38,9 @@ export default function SmartChlorTiles({ value, onChange, invalid }: Props) {
       <div style={{ display: 'flex', gap: 4 }}>
         {TILES.map(({ status, labelKey }) => {
           const selected = value === status
-          // "out" uses the real FROG @ease OUT-indicator pad color (from the
-          // physical strip bottle), not a generic danger-red token — same
-          // swatch-accuracy treatment as the pH/TAC/hardness pads.
           const tone = status === 'ok'
             ? { bg: 'var(--status-ok-bg)', color: 'var(--status-ok-text)' }
-            : { bg: '#B85D7E', color: 'rgba(255,255,255,0.9)' }
+            : { bg: 'var(--status-danger-bg)', color: 'var(--status-danger-text)' }
           return (
             <button
               key={status}
@@ -53,6 +50,10 @@ export default function SmartChlorTiles({ value, onChange, invalid }: Props) {
                 flex: 1,
                 height: 34,
                 borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
                 fontFamily: '"Sora", sans-serif',
                 fontSize: 12,
                 fontWeight: 600,
@@ -67,6 +68,15 @@ export default function SmartChlorTiles({ value, onChange, invalid }: Props) {
                     : '2.5px solid transparent',
               }}
             >
+              {status === 'out' && (
+                // The real FROG @ease OUT-indicator pad color, off the
+                // physical strip bottle — a reference swatch to compare your
+                // strip's pad against, not the button's own selected color.
+                <span
+                  aria-hidden="true"
+                  style={{ width: 14, height: 14, borderRadius: 4, background: '#B85D7E', flexShrink: 0, border: '1px solid rgba(255,255,255,0.25)' }}
+                />
+              )}
               {t(labelKey)}
             </button>
           )
