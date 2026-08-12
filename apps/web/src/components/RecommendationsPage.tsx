@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { PartyPopper, Info, TrendingUp, TrendingDown } from 'lucide-react'
+import { PartyPopper, Info, TrendingUp, TrendingDown, Plus, FlaskConical, Waves, Gem, Droplet, Droplets, Snowflake, Shield, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Action, Recommendation, RecommendationsResponse, TreatmentProduct } from '../types'
 import { PARAM_GUIDANCE } from '../paramGuidance'
@@ -18,6 +18,19 @@ const sectionCardStyle: React.CSSProperties = {
   boxShadow: 'var(--shadow-card)',
   padding: '16px',
   marginBottom: 14,
+}
+
+// Same icon-per-param language as the Dashboard's tiles/Measurements page,
+// keyed by WATER_PARAMS' param id (rec.param) rather than the current-value
+// field name they sometimes differ from (cya's field is "stabilizer").
+const PARAM_ICON: Record<string, LucideIcon> = {
+  ph: FlaskConical,
+  tac: Waves,
+  hardness: Gem,
+  cl: Droplet,
+  br: Droplets,
+  salt: Snowflake,
+  cya: Shield,
 }
 
 function formatValue(n: number): string {
@@ -156,11 +169,13 @@ function RecommendationCard({ rec, onLogTreatment, dosageProducts }: {
   const guidance = PARAM_GUIDANCE[rec.param]
   const directionLabel = rec.direction === 'raise' ? t('recommendations_raise') : t('recommendations_lower')
   const directionColor = rec.direction === 'raise' ? 'var(--status-warn-text)' : 'var(--status-danger-text)'
+  const ParamIcon = PARAM_ICON[rec.param] ?? FlaskConical
 
   return (
     <div style={sectionCardStyle}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: '"Sora", sans-serif', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+          <ParamIcon size={14} strokeWidth={1.75} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
           {guidance ? t(guidance.labelKey) : rec.param}
         </div>
         <span style={{
@@ -245,14 +260,15 @@ function LogTreatmentButton({ productId, grams, mL, onLogTreatment }: {
   return (
     <button
       type="button"
-      className="btn-ghost"
-      style={{ alignSelf: 'flex-start', fontSize: 11, padding: '4px 8px' }}
+      className="btn-primary"
+      style={{ alignSelf: 'flex-end', fontSize: 11, padding: '5px 10px' }}
       onClick={() => onLogTreatment({
         dosage_product_id: productId,
         qty: display ? String(display.value) : undefined,
         unit: display ? toTreatmentUnit(display.unit) : undefined,
       })}
     >
+      <Plus size={12} strokeWidth={2.25} aria-hidden="true" />
       {t('recommendations_log_treatment')}
     </button>
   )
