@@ -30,4 +30,4 @@ jobs:
       # manifest — an unrelated schema, no `codeowners` key) and crashes.
       # Mounting only custom_components/ limits the glob to our integration.
       - name: Hassfest validation
-        run: docker run --rm -v "${{ github.workspace }}/custom_components:/github/workspace" ghcr.io/home-assistant/hassfest
+        run: docker run --rm -v "${{ github.workspace }}/custom_components:/github/workspace/custom_components" ghcr.io/home-assistant/hassfest
