@@ -59,6 +59,14 @@ const activeInstallation = {
   created_at: '2026-01-01T00:00:00',
 }
 
+describe('Topbar — logo', () => {
+  it('shows the app version under the wordmark', () => {
+    renderTopbar()
+
+    expect(screen.getByText(`v${__APP_VERSION__}`)).toBeInTheDocument()
+  })
+})
+
 describe('Topbar — delete installation', () => {
   it('opens a styled confirm dialog instead of a native window.confirm', () => {
     const deleteInstallation = vi.fn()

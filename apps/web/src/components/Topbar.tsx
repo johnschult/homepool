@@ -190,15 +190,25 @@ export default function Topbar({ onAdd, onLogout, onProfile, onAdmin, onAddInsta
             height={42}
             style={{ flexShrink: 0 }}
           />
-          <div style={{
-            fontSize: 22,
-            fontWeight: 700,
-            letterSpacing: '-0.02em',
-            lineHeight: 1,
-            fontFamily: 'Sora, sans-serif',
-          }}>
-            <span style={{ color: 'var(--text-primary)' }}>home</span>
-            <span style={{ color: 'var(--accent)' }}>pool</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div style={{
+              fontSize: 22,
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              lineHeight: 1,
+              fontFamily: 'Sora, sans-serif',
+            }}>
+              <span style={{ color: 'var(--text-primary)' }}>home</span>
+              <span style={{ color: 'var(--accent)' }}>pool</span>
+            </div>
+            <span style={{
+              fontSize: 10,
+              fontFamily: "'IBM Plex Mono', monospace",
+              color: 'var(--text-muted)',
+              letterSpacing: '0.03em',
+            }}>
+              v{__APP_VERSION__}
+            </span>
           </div>
         </button>
 
