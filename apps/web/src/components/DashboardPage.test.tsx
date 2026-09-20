@@ -133,3 +133,66 @@ describe('DashboardPage — recent history timestamps', () => {
     expect(await screen.findByText(/Sunday, September 20, 2026/)).toBeInTheDocument()
   })
 })
+
+describe('DashboardPage — recent history details column', () => {
+  const CATALOG = [
+    { id: 5, key: 'liquid_chlorine', builtin_key: null, label: 'Liquid chlorine', icon: 'droplet',
+      default_unit: 'L', param: null, dosage_product_id: null, enabled: true, sort_order: 1 },
+  ]
+
+  function makeTreatment(overrides: Partial<Action> = {}): Action {
+    return makeMeasurement({
+      action_type: 'Add product',
+      treatment_id: 5,
+      qty: '250',
+      unit: 'g',
+      ...overrides,
+    })
+  }
+
+  function mockCatalog(catalog: unknown[]) {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => ({
+      ok: true,
+      json: async () => {
+        const url = String(input)
+        if (url.endsWith('/recommendations')) return { recommendations: [] }
+        if (url.endsWith('/treatments')) return catalog
+        return []
+      },
+    } as Response))
+  }
+
+  beforeEach(() => {
+    mockLocale = 'en'
+    setActiveInstallation(makeInstallation())
+  })
+
+  it('names the column "Details", since it holds more than measured parameters', async () => {
+    render(<DashboardPage actions={[makeMeasurement()]} products={[]} />)
+    expect(await screen.findByRole('columnheader', { name: 'Details' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Parameters' })).not.toBeInTheDocument()
+  })
+
+  it('shows which product was added and how much, with the brand', async () => {
+    mockCatalog(CATALOG)
+    render(<DashboardPage actions={[makeTreatment({ brand: 'HTH Super' })]} products={[]} />)
+
+    expect(await screen.findByText('Liquid chlorine')).toBeInTheDocument()
+    expect(screen.getByText('250 g · HTH Super')).toBeInTheDocument()
+  })
+
+  it('follows a product rename through to the entry', async () => {
+    mockCatalog([{ ...CATALOG[0], label: 'Pool shock' }])
+    render(<DashboardPage actions={[makeTreatment({ treatment_label: 'Liquid chlorine' })]} products={[]} />)
+
+    expect(await screen.findByText('Pool shock')).toBeInTheDocument()
+  })
+
+  it('falls back to the label snapshotted at log time when the product was deleted', async () => {
+    mockCatalog([])
+    render(<DashboardPage actions={[makeTreatment({ treatment_label: 'Liquid chlorine' })]} products={[]} />)
+
+    expect(await screen.findByText('Liquid chlorine')).toBeInTheDocument()
+    expect(screen.getByText('250 g')).toBeInTheDocument()
+  })
+})

@@ -986,7 +986,7 @@ input[type="checkbox"]:checked::after {
     grid-template-columns: 1fr 1fr;
   }
 
-  /* History table: hide Parameters & Notes columns on mobile */
+  /* History table: hide Details & Notes columns on mobile */
   .history-col-params,
   .history-col-notes {
     display: none;
