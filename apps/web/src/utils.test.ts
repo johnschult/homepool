@@ -455,6 +455,26 @@ describe('maintenanceTodoItems', () => {
     const items = maintenanceTodoItems([makeTask({ builtin_key: 'filter_maintenance', days_until_due: -1 })], t)
     expect(items[0].kind).toBe('maintenance')
   })
+
+  it('orders items by due date: most overdue first, never-done next, then soonest due', () => {
+    const items = maintenanceTodoItems(
+      [
+        makeTask({ key: 'soon', sort_order: 0, days_until_due: 4 }),
+        makeTask({ key: 'never', sort_order: 1, days_until_due: null }),
+        makeTask({ key: 'late', sort_order: 2, days_until_due: -1 }),
+        makeTask({ key: 'later', sort_order: 3, days_until_due: -6 }),
+        makeTask({ key: 'today', sort_order: 4, days_until_due: 0 }),
+      ],
+      t,
+    )
+    expect(items.map(i => i.id)).toEqual([
+      'maint-later',
+      'maint-late',
+      'maint-never',
+      'maint-today',
+      'maint-soon',
+    ])
+  })
 })
 
 describe('maintenance task taxonomy (issue #51)', () => {
