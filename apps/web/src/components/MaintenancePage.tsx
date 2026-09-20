@@ -7,6 +7,7 @@ import {
   maintenanceTaskLabel,
   isMeasurementTask,
   isOnDemandTask,
+  sortMaintenanceTasks,
 } from '../utils'
 import { TaskIcon } from '../taskIcons'
 import type { EntryKind, TreatmentPrefill } from './ActionForm'
@@ -107,7 +108,7 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
     }
   }
 
-  const visibleTasks = tasks.filter(tk => tk.enabled)
+  const visibleTasks = sortMaintenanceTasks(tasks.filter(tk => tk.enabled))
 
   return (
     <div>

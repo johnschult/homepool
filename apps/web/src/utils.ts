@@ -102,6 +102,18 @@ export function isOnDemandTask(task: { interval_days: number }): boolean {
   return task.interval_days <= 0
 }
 
+/** Maintenance view order: most overdue first, then soonest due. A scheduled
+ * task never done yet has no date, so it counts as due now (right after the
+ * overdue ones). On-demand tasks are never due and go last. Ties keep the
+ * user's configured sort_order. Returns a new array. */
+export function sortMaintenanceTasks<
+  T extends { days_until_due: number | null; interval_days: number; sort_order: number },
+>(tasks: T[]): T[] {
+  const rank = (task: T): number =>
+    isOnDemandTask(task) ? Number.POSITIVE_INFINITY : (task.days_until_due ?? 0)
+  return [...tasks].sort((a, b) => rank(a) - rank(b) || a.sort_order - b.sort_order)
+}
+
 /** The raw action_type every treatment is stored under. It predates the
  * treatment catalog (it used to be the "Add product" maintenance task), and
  * keeping the string means every treatment ever logged stays classified as one.

@@ -53,6 +53,24 @@ describe('MaintenancePage', () => {
     expect(screen.getByText(/En retard/)).toBeInTheDocument()
   })
 
+  it('lists overdue tasks first, then by soonest due date', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => [
+        task({ id: 1, key: 'a', builtin_key: null, label: 'Later', days_until_due: 9, sort_order: 0 }),
+        task({ id: 2, key: 'b', builtin_key: null, label: 'Soon', days_until_due: 1, sort_order: 1 }),
+        task({ id: 3, key: 'c', builtin_key: null, label: 'Overdue', days_until_due: -4, sort_order: 2 }),
+      ],
+    } as Response)
+
+    render(<MaintenancePage />)
+
+    await waitFor(() => expect(screen.getByText('Overdue')).toBeInTheDocument())
+    const order = ['Overdue', 'Soon', 'Later'].map(l => screen.getByText(l))
+    expect(order[0].compareDocumentPosition(order[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(order[1].compareDocumentPosition(order[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('marks a task done and updates its status from the response', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [task()] } as Response)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { Action, Installation, InstallationWaterParams } from './types'
+import type { Action, Installation, InstallationWaterParams, MaintenanceTask } from './types'
 import { ppmToGermanDegrees } from './units'
 import {
   getActionsThisMonth,
@@ -17,6 +17,7 @@ import {
   maintenanceTodoItems,
   maintenanceTaskLabel,
   maintenanceOptions,
+  sortMaintenanceTasks,
   isMeasurementTask,
   isOnDemandTask,
   treatmentProductLabel,
@@ -469,6 +470,32 @@ describe('maintenance task taxonomy (issue #51)', () => {
 
   it('never schedules an on-demand task on the dashboard', () => {
     expect(maintenanceTodoItems([makeTask({ interval_days: 0, days_until_due: null })], t)).toHaveLength(0)
+  })
+})
+
+describe('sortMaintenanceTasks', () => {
+  const mk = (id: number, days: number | null, interval = 7, sort_order = id) =>
+    ({ id, days_until_due: days, interval_days: interval, sort_order }) as MaintenanceTask
+
+  it('puts overdue first, most overdue at the top, then soonest due', () => {
+    const sorted = sortMaintenanceTasks([mk(1, 5), mk(2, -1), mk(3, 0), mk(4, -6)])
+    expect(sorted.map(x => x.id)).toEqual([4, 2, 3, 1])
+  })
+
+  it('treats a never-done scheduled task as due now: after overdue, before due-in-future', () => {
+    const sorted = sortMaintenanceTasks([mk(1, 2), mk(2, null), mk(3, -3)])
+    expect(sorted.map(x => x.id)).toEqual([3, 2, 1])
+  })
+
+  it('puts on-demand tasks last', () => {
+    const sorted = sortMaintenanceTasks([mk(1, null, 0), mk(2, 30), mk(3, -1)])
+    expect(sorted.map(x => x.id)).toEqual([3, 2, 1])
+  })
+
+  it('breaks ties by sort_order and does not mutate its input', () => {
+    const input = [mk(1, 3, 7, 2), mk(2, 3, 7, 1)]
+    expect(sortMaintenanceTasks(input).map(x => x.id)).toEqual([2, 1])
+    expect(input.map(x => x.id)).toEqual([1, 2])
   })
 })
 
