@@ -16,7 +16,8 @@ import {
 } from '../utils'
 import { useT } from '../context/LocaleContext'
 import { useInstallation } from '../context/InstallationContext'
-import type { Locale, TranslationKey } from '../i18n/translations'
+import type { TranslationKey } from '../i18n/translations'
+import { formatDate, formatMonthYear } from '../dates'
 import { ACTION_TYPE_LABELS, PRODUCT_LABELS } from './ActionForm'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -25,17 +26,6 @@ type FilterType = 'all' | 'measurement' | 'treatment' | 'maintenance'
 type Category = 'measurement' | 'treatment' | 'maintenance'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-function monthLabel(yearMonth: string, locale: Locale): string {
-  const [y, m] = yearMonth.split('-')
-  const d = new Date(parseInt(y), parseInt(m) - 1, 1)
-  return d.toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-GB', { month: 'long', year: 'numeric' })
-}
-
-function formatDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-')
-  return `${d}/${m}/${y}`
-}
 
 function getCategory(action: Action): Category {
   const t = action.action_type
@@ -152,7 +142,7 @@ function EntryCard({ action, products, treatments, onEdit, onDelete }: {
   onEdit?: (action: Action) => void
   onDelete?: (action: Action) => void
 }) {
-  const { t } = useT()
+  const { t, locale } = useT()
   const { active, ranges } = useInstallation()
   const [hovered, setHovered] = useState(false)
   const cat = getCategory(action)
@@ -258,7 +248,7 @@ function EntryCard({ action, products, treatments, onEdit, onDelete }: {
           fontFamily: '"IBM Plex Mono", monospace',
           fontSize: 10, color: 'var(--text-muted)',
         }}>
-          {formatDate(action.date)}
+          {formatDate(action.date, locale)}
         </div>
         <div className="row-actions" style={{ display: 'flex', gap: 2, opacity: hovered ? 1 : 0, transition: 'opacity 0.15s' }}>
           {onEdit && (
@@ -412,7 +402,7 @@ export default function HistoryPage({ actions, products, onEdit, onDelete }: Pro
               letterSpacing: '0.06em', color: 'var(--text-muted)',
               marginBottom: 8,
             }}>
-              {monthLabel(ym, locale)}
+              {formatMonthYear(ym, locale)}
             </div>
             {list.map(action => (
               <EntryCard key={action.id} action={action} products={products} treatments={treatments} onEdit={onEdit} onDelete={onDelete} />

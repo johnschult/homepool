@@ -18,7 +18,7 @@ import {
 } from '../utils'
 import { useT } from '../context/LocaleContext'
 import { useInstallation } from '../context/InstallationContext'
-import type { Locale } from '../i18n/translations'
+import { formatShortDate, formatDateLong, parseDay, localDateString } from '../dates'
 import type { DynamicRanges } from '../utils'
 import TrendChart from './TrendChart'
 import SmartChlorCard from './SmartChlorCard'
@@ -30,19 +30,6 @@ type Period = 1 | 3 | 6 | null
 type ParamStatus = 'normal' | 'warn' | 'bad'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-function formatShort(dateStr: string): string {
-  const [, m, d] = dateStr.split('-')
-  return `${d}/${m}`
-}
-
-function formatDateLong(dateStr: string, locale: Locale): string {
-  const [y, m, d] = dateStr.split('-')
-  const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d))
-  return date.toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-GB', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  })
-}
 
 function valueColor(status: ParamStatus): string {
   if (status === 'normal') return 'var(--status-ok-text)'
@@ -144,8 +131,7 @@ export default function MeasurementsPage({ actions, onAdd }: Props) {
     { label: t('measurements_filter_all'),  value: null },
   ]
 
-  const today = new Date()
-  const yearMonth = today.toISOString().slice(0, 7)
+  const yearMonth = localDateString().slice(0, 7)
 
   // KPI 1: measurements this month
   const measuresThisMonth = useMemo(() =>
@@ -292,7 +278,7 @@ export default function MeasurementsPage({ actions, onAdd }: Props) {
           </div>
           {lastMeasure ? (
             <>
-              <div style={{ ...kpiValue, fontSize: 16 }}>{formatDateLong(lastMeasure.date, locale)}</div>
+              <div style={{ ...kpiValue, fontSize: 16 }}>{formatDateLong(parseDay(lastMeasure.date), locale)}</div>
               <div style={kpiSub}>{daysAgoLabel(getDaysSince(lastMeasure.date))}</div>
             </>
           ) : (
@@ -400,7 +386,7 @@ export default function MeasurementsPage({ actions, onAdd }: Props) {
                 {tableRows.map(({ action, ph, chlorine, tac, temp, hardness, smartchlorStatus }) => (
                   <tr key={action.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td style={{ padding: '9px 8px 9px 0', fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                      {formatShort(action.date)}
+                      {formatShortDate(action.date, locale)}
                     </td>
                     <td style={{ padding: '9px 8px 9px 0', textAlign: 'right' }}>
                       {cellValue(ph, v => getPhStatus(v, ranges ?? undefined), v => v.toFixed(1))}

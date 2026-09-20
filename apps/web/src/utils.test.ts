@@ -4,6 +4,9 @@ import { ppmToGermanDegrees } from './units'
 import {
   getActionsThisMonth,
   daysSinceLastAction,
+  getDaysSince,
+  getActionsLastMonth,
+  getFilteredMeasureActions,
   extractLastPh,
   getSaltStatus,
   getStabilizerStatus,
@@ -70,6 +73,34 @@ describe('getActionsThisMonth', () => {
 describe('daysSinceLastAction', () => {
   it('returns 0 for empty list', () => {
     expect(daysSinceLastAction([])).toBe(0)
+  })
+})
+
+// 9:30pm on Sep 30 in New York — already Oct 1 in UTC. "Today" must follow the
+// viewer's calendar, not UTC's.
+const EVENING = new Date(2026, 8, 30, 21, 30)
+
+describe('local-calendar "today"', () => {
+  it('getDaysSince counts an entry logged for today as 0 days, even after UTC midnight', () => {
+    expect(getDaysSince('2026-09-30', EVENING)).toBe(0)
+    expect(getDaysSince('2026-09-29', EVENING)).toBe(1)
+  })
+
+  it('daysSinceLastAction agrees', () => {
+    expect(daysSinceLastAction([makeAction({ date: '2026-09-30' })], EVENING)).toBe(0)
+  })
+
+  it('getActionsLastMonth is still September-relative in the evening of Sep 30', () => {
+    const actions = [makeAction({ date: '2026-08-15' }), makeAction({ date: '2026-09-15' })]
+    expect(getActionsLastMonth(actions, EVENING).map(a => a.date)).toEqual(['2026-08-15'])
+  })
+
+  it('getFilteredMeasureActions anchors the 1-month window on the local month', () => {
+    const actions = [
+      makeAction({ date: '2026-09-01', action_type: 'Measurement' }),
+      makeAction({ date: '2026-08-31', action_type: 'Measurement' }),
+    ]
+    expect(getFilteredMeasureActions(actions, 1, EVENING).map(a => a.date)).toEqual(['2026-09-01'])
   })
 })
 

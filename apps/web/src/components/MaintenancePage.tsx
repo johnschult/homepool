@@ -13,6 +13,7 @@ import { TaskIcon } from '../taskIcons'
 import type { EntryKind, TreatmentPrefill } from './ActionForm'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
+import { formatDate } from '../dates'
 import MaintenanceConfig from './MaintenanceConfig'
 
 type Translate = (key: TranslationKey) => string
@@ -62,7 +63,7 @@ type Props = {
 
 export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
   const { active, isOwner, canEdit } = useInstallation()
-  const { t } = useT()
+  const { t, locale } = useT()
   const [tasks, setTasks] = useState<MaintenanceTask[]>([])
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState(false)
@@ -182,7 +183,7 @@ export default function MaintenancePage({ onActionLogged, onLogEntry }: Props) {
                     ? t('maint_on_demand')
                     : `${t('maint_every')} ${task.interval_days} ${t('todo_day_abbr')}`}
                   {task.last_date && (
-                    <> · {t('maint_last_done')} {task.last_date.split('-').reverse().join('/')}</>
+                    <> · {t('maint_last_done')} {formatDate(task.last_date, locale)}</>
                   )}
                 </div>
               </div>

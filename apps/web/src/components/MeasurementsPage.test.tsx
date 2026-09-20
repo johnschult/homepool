@@ -4,11 +4,12 @@ import MeasurementsPage from './MeasurementsPage'
 import type { Action, Installation } from '../types'
 import { translations } from '../i18n/translations'
 
+let mockLocale: 'en' | 'fr' = 'fr'
 vi.mock('../context/LocaleContext', () => ({
   useT: () => ({
-    locale: 'fr',
+    locale: mockLocale,
     setLocale: vi.fn(),
-    t: (key: string) => (translations.fr as Record<string, string>)[key] ?? key,
+    t: (key: string) => (translations[mockLocale] as Record<string, string>)[key] ?? key,
   }),
 }))
 
@@ -50,6 +51,7 @@ function makeMeasurement(overrides: Partial<Action> = {}): Action {
 
 beforeEach(() => {
   mockUseInstallation.mockReset()
+  mockLocale = 'fr'
 })
 
 describe('MeasurementsPage — FROG @ease SmartChlor', () => {
@@ -77,5 +79,22 @@ describe('MeasurementsPage — FROG @ease SmartChlor', () => {
 
     expect(screen.getByText(translations.fr.graph_chlorine_trend)).toBeInTheDocument()
     expect(screen.queryByText(translations.fr.dash_smartchlor_title)).not.toBeInTheDocument()
+  })
+})
+
+describe('MeasurementsPage — US date formats', () => {
+  it('shows the last reading as a long US date and table rows month-first', () => {
+    // The table defaults to the current month, so pin "now" inside August.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 7, 15, 12) })
+    try {
+      mockLocale = 'en'
+      setActiveInstallation(makeInstallation())
+      render(<MeasurementsPage actions={[makeMeasurement({ date: '2026-08-10' })]} />)
+
+      expect(screen.getByText('August 10, 2026')).toBeInTheDocument()
+      expect(screen.getByText('08/10')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

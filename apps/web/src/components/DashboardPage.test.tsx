@@ -1,14 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import DashboardPage from './DashboardPage'
 import type { Action, Installation } from '../types'
 import { translations } from '../i18n/translations'
 
+let mockLocale: 'en' | 'fr' = 'fr'
 vi.mock('../context/LocaleContext', () => ({
   useT: () => ({
-    locale: 'fr',
+    locale: mockLocale,
     setLocale: vi.fn(),
-    t: (key: string) => (translations.fr as Record<string, string>)[key] ?? key,
+    t: (key: string) => (translations[mockLocale] as Record<string, string>)[key] ?? key,
   }),
 }))
 
@@ -49,6 +50,7 @@ function makeMeasurement(overrides: Partial<Action> = {}): Action {
 }
 
 beforeEach(() => {
+  mockLocale = 'fr'
   mockUseInstallation.mockReset()
   // Maintenance/recommendations fetches: resolve empty so their effects settle
   // without affecting the tile/card assertions below.
@@ -101,5 +103,33 @@ describe('DashboardPage — FROG @ease SmartChlor', () => {
 
     await waitFor(() => expect(screen.getByText(translations.fr.param_chlorine)).toBeInTheDocument())
     expect(screen.queryByText(translations.fr.dash_smartchlor_title)).not.toBeInTheDocument()
+  })
+})
+
+describe('DashboardPage — recent history timestamps', () => {
+  // 9:30pm Sep 20 in New York (the suite pins TZ) — already Sep 21 in UTC.
+  const NOW = new Date(2026, 8, 20, 21, 30)
+
+  beforeEach(() => {
+    mockLocale = 'en'
+    vi.useFakeTimers({ toFake: ['Date'], now: NOW })
+    setActiveInstallation(makeInstallation())
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('shows time-since instead of a raw date, with the full US date on hover', async () => {
+    const tenMinutesAgo = new Date(NOW.getTime() - 10 * 60_000).toISOString().replace('Z', '')
+    const actions = [makeMeasurement({ date: '2026-09-20', created_at: tenMinutesAgo })]
+    render(<DashboardPage actions={actions} products={[]} />)
+
+    const when = await screen.findByText('10 min. ago')
+    expect(when.tagName).toBe('TIME')
+    expect(when).toHaveAttribute('datetime', '2026-09-20')
+    expect(when).toHaveAttribute('title', '09/20/2026')
+  })
+
+  it('formats the header date the US way', async () => {
+    render(<DashboardPage actions={[]} products={[]} />)
+    expect(await screen.findByText(/Sunday, September 20, 2026/)).toBeInTheDocument()
   })
 })
