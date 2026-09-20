@@ -39,6 +39,7 @@ import {
   type DynamicRanges,
   type MaintenanceOption,
 } from '../utils'
+import { localDateString } from '../dates'
 import { celsiusToFahrenheit, ppmToGramsPerLiter, ppmToGermanDegrees, ppmToFrenchDegrees, convertRange, formatUnitRange } from '../units'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
@@ -1036,7 +1037,7 @@ export default function ActionForm({
   const isEditMode = !!editAction
   const editingMeasurement = editAction ? isMeasurement(editAction.action_type) : false
   const editingTreatment = editAction ? editAction.action_type === PRODUCT_ACTION_TYPE : false
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDateString()
 
   const editKind: EntryKind = editingMeasurement
     ? 'measurement'

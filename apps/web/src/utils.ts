@@ -3,6 +3,7 @@ import { convertRange, metricToDisplayConverter } from './units'
 import type { TranslationKey } from './i18n/translations'
 import type { SmartChlorStatus } from './sanitizer'
 import { sanitizerCapabilities } from './sanitizer'
+import { calendarDaysSince, localDateString } from './dates'
 
 // ── Water status ──────────────────────────────────────────────────────────────
 
@@ -214,14 +215,10 @@ export function getActionsThisMonth(actions: Action[], yearMonth: string): Actio
   return actions.filter(a => a.date.startsWith(yearMonth))
 }
 
-export function daysSinceLastAction(actions: Action[]): number {
+export function daysSinceLastAction(actions: Action[], now: Date = new Date()): number {
   if (actions.length === 0) return 0
   const sorted = [...actions].sort((a, b) => b.date.localeCompare(a.date))
-  const [year, month, day] = sorted[0].date.split('-').map(Number)
-  const lastUtc = Date.UTC(year, month - 1, day)
-  const now = new Date()
-  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  return Math.floor((todayUtc - lastUtc) / (1000 * 60 * 60 * 24))
+  return calendarDaysSince(sorted[0].date, now)
 }
 
 export function extractLastPh(actions: Action[]): string {
@@ -476,22 +473,18 @@ export function getPhHistory(actions: Action[], limit = 10): PhPoint[] {
 }
 
 /** Returns actions from the previous calendar month. */
-export function getActionsLastMonth(actions: Action[]): Action[] {
-  const now = new Date()
-  let year = now.getUTCFullYear()
-  let month = now.getUTCMonth() // 0-indexed
-  if (month === 0) { year -= 1; month = 12 } else { month -= 1 }
+export function getActionsLastMonth(actions: Action[], now: Date = new Date()): Action[] {
+  let year = now.getFullYear()
+  // getMonth() is 0-indexed, so as a 1-indexed number it already names the previous month.
+  let month = now.getMonth()
+  if (month === 0) { year -= 1; month = 12 }
   const ym = `${year}-${String(month).padStart(2, '0')}`
   return actions.filter(a => a.date.startsWith(ym))
 }
 
-/** Days since a date string, calculated in UTC (same approach as daysSinceLastAction). */
-export function getDaysSince(dateStr: string): number {
-  const [year, month, day] = dateStr.split('-').map(Number)
-  const dateUtc = Date.UTC(year, month - 1, day)
-  const now = new Date()
-  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  return Math.floor((todayUtc - dateUtc) / (1000 * 60 * 60 * 24))
+/** Days since a date string, counted on the viewer's local calendar. */
+export function getDaysSince(dateStr: string, now: Date = new Date()): number {
+  return calendarDaysSince(dateStr, now)
 }
 
 // Show a maintenance task on the dashboard's attention panel when it is
@@ -650,12 +643,10 @@ export type ChlorinePoint = { date: string; chlorine: number }
  * months=null → all.
  * Returns sorted newest-first.
  */
-export function getFilteredMeasureActions(actions: Action[], months: number | null): Action[] {
+export function getFilteredMeasureActions(actions: Action[], months: number | null, now: Date = new Date()): Action[] {
   const filtered = actions.filter(a => MEASURE_ACTION_TYPES.includes(a.action_type))
   if (months === null) return filtered.sort((a, b) => b.date.localeCompare(a.date))
-  const now = new Date()
-  const cutoff = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months + 1, 1))
-  const cutoffStr = cutoff.toISOString().slice(0, 10)
+  const cutoffStr = localDateString(new Date(now.getFullYear(), now.getMonth() - months + 1, 1))
   return filtered
     .filter(a => a.date >= cutoffStr)
     .sort((a, b) => b.date.localeCompare(a.date))

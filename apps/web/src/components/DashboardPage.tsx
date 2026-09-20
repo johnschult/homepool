@@ -3,7 +3,8 @@ import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTria
 import type { Action, Product, RecommendationsResponse, MaintenanceTask } from '../types'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
-import type { Locale } from '../i18n/translations'
+import { useNow } from '../hooks/useNow'
+import { formatDate, formatDateLong, formatRelativeWhen } from '../dates'
 import TrendChart from './TrendChart'
 import {
   PARAM_RANGES,
@@ -32,17 +33,6 @@ import {
 import { ACTION_TYPE_LABELS } from './ActionForm'
 import { sanitizerCapabilities } from '../sanitizer'
 import SmartChlorCard from './SmartChlorCard'
-
-function formatDateLong(d: Date, locale: Locale): string {
-  return d.toLocaleDateString(locale === 'fr' ? 'fr-FR' : 'en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
-}
-
-function formatShortDate(dateStr: string): string {
-  const [, m, day] = dateStr.split('-')
-  return `${day}/${m}`
-}
 
 function statusColor(s: ParamStatus): string {
   if (s === 'normal') return 'var(--status-ok-text)'
@@ -99,7 +89,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
   const { t, locale } = useT()
   const sanitizer = active?.sanitizer ?? 'chlorine'
 
-  const today = new Date()
+  const now = useNow()
 
   const params = useMemo(() => extractMeasuredParams(actions, sanitizer), [actions, sanitizer])
   const smartChlor = useMemo(() => extractSmartChlorStatus(actions), [actions])
@@ -234,7 +224,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
         <div>
           <h1 className="page-header-title" style={{ margin: 0 }}>{t('page_log_title')}</h1>
           <div className="page-header-sub">
-            {active?.name ? `${active.name} · ` : ''}{formatDateLong(today, locale)}
+            {active?.name ? `${active.name} · ` : ''}{formatDateLong(now, locale, { weekday: true })}
             {lastMeasuredLabel ? ` · ${t('dash_last_measured').toLowerCase()} ${lastMeasuredLabel}` : ''}
           </div>
         </div>
@@ -389,7 +379,11 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
                     onMouseLeave={() => setHoveredRowId(null)}
                   >
                     <td style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
-                      {formatShortDate(action.date)}
+                      {/* Recency is what this list is for; the exact date stays
+                          one hover away. */}
+                      <time dateTime={action.date} title={formatDate(action.date, locale)}>
+                        {formatRelativeWhen(action, locale, now)}
+                      </time>
                     </td>
                     <td>
                       <ActionTypeBadge actionType={action.action_type} />

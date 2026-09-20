@@ -4,11 +4,12 @@ import MaintenancePage from './MaintenancePage'
 import { translations } from '../i18n/translations'
 import type { MaintenanceTask } from '../types'
 
+let mockLocale: 'en' | 'fr' = 'fr'
 vi.mock('../context/LocaleContext', () => ({
   useT: () => ({
-    locale: 'fr',
+    locale: mockLocale,
     setLocale: vi.fn(),
-    t: (key: string) => (translations.fr as Record<string, string>)[key] ?? key,
+    t: (key: string) => (translations[mockLocale] as Record<string, string>)[key] ?? key,
   }),
 }))
 
@@ -37,6 +38,7 @@ const task = (overrides: Partial<MaintenanceTask> = {}): MaintenanceTask => ({
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  mockLocale = 'fr'
 })
 
 describe('MaintenancePage', () => {
@@ -192,5 +194,15 @@ describe('MaintenancePage', () => {
     fireEvent.click(screen.getByText(translations.fr.maint_log_entry))
 
     expect(onLogEntry).toHaveBeenCalledWith('measurement', undefined, undefined, 'frog_strip_check')
+  })
+})
+
+describe('MaintenancePage — US date formats', () => {
+  it('shows the last-done date month-first for English', async () => {
+    mockLocale = 'en'
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => [task({ last_date: '2026-07-10' })] } as Response)
+    render(<MaintenancePage />)
+
+    await waitFor(() => expect(screen.getByText(/07\/10\/2026/)).toBeInTheDocument())
   })
 })

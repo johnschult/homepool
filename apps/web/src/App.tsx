@@ -3,6 +3,7 @@ import type { Action, Product, User } from './types'
 import { useTheme, type Theme } from './hooks/useTheme'
 import { useLocale } from './i18n/useLocale'
 import { LocaleContext, useT } from './context/LocaleContext'
+import { formatDate, localDateString } from './dates'
 import { InstallationProvider, useInstallation } from './context/InstallationContext'
 import Topbar from './components/Topbar'
 import ActionForm, { type EntryKind, type TreatmentPrefill } from './components/ActionForm'
@@ -52,7 +53,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
   // new installation so the user lands straight on setting up their dosing
   // products instead of having to find the tab themselves.
   const [editInstallationTab, setEditInstallationTab] = useState<InstallationModalTab>('general')
-  const { t } = useT()
+  const { t, locale } = useT()
   const [actions, setActions] = useState<Action[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
@@ -130,7 +131,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `homepool-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `homepool-backup-${localDateString()}.json`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -308,7 +309,7 @@ function AppMain({ user, onLogout, onUserUpdate, theme, setTheme }: AppMainProps
             <div>
               <p style={{ fontFamily: '"Sora", sans-serif', fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 20px' }}>
                 <strong>{deletingAction.action_type}</strong> {t('modal_delete_on')}{' '}
-                {deletingAction.date.split('-').reverse().join('/')}.{' '}
+                {formatDate(deletingAction.date, locale)}.{' '}
                 {t('modal_delete_irreversible')}
               </p>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

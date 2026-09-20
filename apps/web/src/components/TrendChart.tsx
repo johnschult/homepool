@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { useT } from '../context/LocaleContext'
+import { formatShortDate } from '../dates'
 
 export type TrendPoint = { date: string; value: number }
 export type TrendStatus = 'ok' | 'warn' | 'danger'
@@ -60,11 +62,6 @@ const STATUS_VAR: Record<TrendStatus, string> = {
   danger: 'var(--status-danger-text)',
 }
 
-function formatShortDate(dateStr: string): string {
-  const [, m, d] = dateStr.split('-')
-  return `${d}/${m}`
-}
-
 export default function TrendChart({
   points,
   idealMin,
@@ -77,6 +74,7 @@ export default function TrendChart({
   formatValue = v => String(v),
   emptyLabel = '—',
 }: Props) {
+  const { locale } = useT()
   const wrapRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [hover, setHover] = useState<number | null>(null)
@@ -200,10 +198,10 @@ export default function TrendChart({
           {!compact && (
             <>
               <text x={padLeft} y={H - 4} fontFamily='"IBM Plex Mono", monospace' fontSize={9} fill="var(--text-muted)">
-                {formatShortDate(points[0].date)}
+                {formatShortDate(points[0].date, locale)}
               </text>
               <text x={padLeft + plotW} y={H - 4} textAnchor="end" fontFamily='"IBM Plex Mono", monospace' fontSize={9} fill="var(--text-muted)">
-                {formatShortDate(last.date)}
+                {formatShortDate(last.date, locale)}
               </text>
             </>
           )}
@@ -247,7 +245,7 @@ export default function TrendChart({
             {formatValue(hovered.value)}{unit ? ` ${unit}` : ''}
           </div>
           <div style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 10, color: 'var(--text-muted)' }}>
-            {formatShortDate(hovered.date)}
+            {formatShortDate(hovered.date, locale)}
           </div>
         </div>
       )}

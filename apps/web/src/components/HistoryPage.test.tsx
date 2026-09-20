@@ -4,11 +4,12 @@ import HistoryPage from './HistoryPage'
 import type { Action, Installation } from '../types'
 import { translations } from '../i18n/translations'
 
+let mockLocale: 'en' | 'fr' = 'fr'
 vi.mock('../context/LocaleContext', () => ({
   useT: () => ({
-    locale: 'fr',
+    locale: mockLocale,
     setLocale: vi.fn(),
-    t: (key: string) => (translations.fr as Record<string, string>)[key] ?? key,
+    t: (key: string) => (translations[mockLocale] as Record<string, string>)[key] ?? key,
   }),
 }))
 
@@ -50,6 +51,7 @@ function makeMeasurement(overrides: Partial<Action> = {}): Action {
 
 beforeEach(() => {
   mockUseInstallation.mockReset()
+  mockLocale = 'fr'
   // The treatment catalog fetch: resolve empty so the effect settles without
   // affecting the entry-list assertions below.
   vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => [] } as Response)
@@ -88,5 +90,23 @@ describe('HistoryPage — FROG @ease SmartChlor', () => {
     render(<HistoryPage actions={actions} products={[]} />)
 
     await waitFor(() => expect(screen.getByText(/^Cl /)).toBeInTheDocument())
+  })
+})
+
+describe('HistoryPage — US date formats', () => {
+  it('shows month-first dates and an English month heading for English', async () => {
+    mockLocale = 'en'
+    setActiveInstallation(makeInstallation())
+    render(<HistoryPage actions={[makeMeasurement({ date: '2026-08-10' })]} products={[]} />)
+
+    await waitFor(() => expect(screen.getByText('08/10/2026')).toBeInTheDocument())
+    expect(screen.getByText(/August 2026/)).toBeInTheDocument()
+  })
+
+  it('keeps day-first dates for French', async () => {
+    setActiveInstallation(makeInstallation())
+    render(<HistoryPage actions={[makeMeasurement({ date: '2026-08-10' })]} products={[]} />)
+
+    await waitFor(() => expect(screen.getByText('10/08/2026')).toBeInTheDocument())
   })
 })

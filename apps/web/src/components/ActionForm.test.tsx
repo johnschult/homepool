@@ -5,6 +5,7 @@ import type { Action, Installation, MaintenanceTask, TreatmentProduct } from '..
 import { translations } from '../i18n/translations'
 import { PARAM_RANGES, type DynamicRanges } from '../utils'
 import { convertRange, celsiusToFahrenheit } from '../units'
+import { localDateString } from '../dates'
 
 // Mocked directly rather than mounted via real providers: LocaleContext and
 // InstallationContext are both unconditionally required by ActionForm, and the
@@ -170,8 +171,23 @@ describe('ActionForm', () => {
     setActiveInstallation(makeInstallation())
     render(<ActionForm onAdd={vi.fn()} />)
 
-    const today = new Date().toISOString().slice(0, 10)
-    expect(screen.getByLabelText('Date')).toHaveAttribute('max', today)
+    expect(screen.getByLabelText('Date')).toHaveAttribute('max', localDateString())
+  })
+
+  it('defaults to the local calendar day in the evening, when UTC is already tomorrow', () => {
+    // 9:30pm Sep 20 in New York (the suite pins TZ) — Sep 21 in UTC.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 20, 21, 30) })
+    try {
+      setActiveInstallation(makeInstallation())
+      const onAdd = vi.fn()
+      render(<ActionForm onAdd={onAdd} />)
+
+      const date = screen.getByLabelText('Date')
+      expect(date).toHaveValue('2026-09-20')
+      expect(date).toHaveAttribute('max', '2026-09-20')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('lets a maintenance entry be backdated too', async () => {
