@@ -519,14 +519,14 @@ export function maintenanceTaskLabel(
  * dashboard attention-panel items, keeping only enabled, scheduled tasks that
  * are never-done, overdue, or due within the warn window. On-demand tasks
  * (interval_days = 0, e.g. adding a product) are never "late", so they never
- * appear here.
+ * appear here. Items come out in due-date order (see sortMaintenanceTasks).
  */
 export function maintenanceTodoItems(
   tasks: MaintenanceTask[],
   t: (key: TranslationKey) => string,
 ): TodoItem[] {
   const items: TodoItem[] = []
-  for (const task of tasks) {
+  for (const task of sortMaintenanceTasks(tasks)) {
     if (!task.enabled || isOnDemandTask(task)) continue
     const days = task.days_until_due
     if (days !== null && days > MAINTENANCE_WARN_WITHIN_DAYS) continue
