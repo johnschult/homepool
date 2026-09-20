@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { Pencil, Trash2, FlaskConical, Droplets, Wrench, Search } from 'lucide-react'
 import type { Action, Product, TreatmentProduct } from '../types'
 import {
@@ -10,7 +10,6 @@ import {
   getHardnessStatus,
   extractMeasuredParams,
   translateLabel,
-  treatmentProductLabel,
   stripMeasurementNotes,
   PRODUCT_ACTION_TYPE,
 } from '../utils'
@@ -18,7 +17,9 @@ import { useT } from '../context/LocaleContext'
 import { useInstallation } from '../context/InstallationContext'
 import type { TranslationKey } from '../i18n/translations'
 import { formatDate, formatMonthYear } from '../dates'
-import { ACTION_TYPE_LABELS, PRODUCT_LABELS } from './ActionForm'
+import { ACTION_TYPE_LABELS } from './ActionForm'
+import { treatmentTitle, treatmentDetail } from '../treatments'
+import { useTreatments } from '../hooks/useTreatments'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -41,26 +42,8 @@ function getTitle(
   t: (key: TranslationKey) => string,
 ): string {
   if (action.action_type === 'Measurement' || action.action_type === 'pH Measurement') return t('action_type_measurement')
-  if (action.action_type === PRODUCT_ACTION_TYPE) {
-    // The live catalog first, so renaming a product carries through history.
-    const current = treatments.find(p => p.id === action.treatment_id)
-    if (current) return treatmentProductLabel(current, t)
-    // Then the label snapshotted when the entry was logged, which is all that
-    // survives once the product is deleted.
-    if (action.treatment_label) return action.treatment_label
-    // Then the global product table, for entries predating the catalog.
-    const legacy = products.find(p => p.id === action.product_id)
-    if (legacy) return translateLabel(t, PRODUCT_LABELS, legacy.name)
-    return t('action_type_add_product')
-  }
+  if (action.action_type === PRODUCT_ACTION_TYPE) return treatmentTitle(action, products, treatments, t)
   return translateLabel(t, ACTION_TYPE_LABELS, action.action_type)
-}
-
-/** The amount and brand a treatment carries, e.g. "250 g · HTH Super". */
-function treatmentDetail(action: Action): string {
-  return [[action.qty, action.unit].filter(Boolean).join(' '), action.brand]
-    .filter(Boolean)
-    .join(' · ')
 }
 
 // Accent is reserved for measurements; treatments and maintenance are told
@@ -292,19 +275,7 @@ export default function HistoryPage({ actions, products, onEdit, onDelete }: Pro
   const [filter, setFilter] = useState<FilterType>('all')
   const [search, setSearch] = useState('')
 
-  // The treatment catalog resolves a treatment's title, so renaming a product
-  // reads through to every entry logged with it. A failed load degrades to the
-  // snapshotted label rather than blanking the list.
-  const [treatments, setTreatments] = useState<TreatmentProduct[]>([])
-  useEffect(() => {
-    if (!active) return
-    let cancelled = false
-    fetch(`/api/installations/${active.id}/treatments`, { credentials: 'same-origin' })
-      .then(r => (r.ok ? r.json() : []))
-      .then((data: TreatmentProduct[]) => { if (!cancelled) setTreatments(Array.isArray(data) ? data : []) })
-      .catch(() => { /* snapshotted labels still render */ })
-    return () => { cancelled = true }
-  }, [active?.id])
+  const treatments = useTreatments(active?.id)
 
   const FILTER_BTNS: { label: string; value: FilterType }[] = [
     { label: t('history_all'),         value: 'all' },

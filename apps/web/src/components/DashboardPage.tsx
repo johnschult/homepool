@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Pencil, Trash2, Plus, Download, Upload, FlaskConical, Wrench, AlertTriangle, ChevronRight, Droplets, Check, LineChart, History, Waves, Gem, Thermometer, Droplet, Snowflake, Shield, type LucideIcon } from 'lucide-react'
-import type { Action, Product, RecommendationsResponse, MaintenanceTask } from '../types'
+import type { Action, Product, RecommendationsResponse, MaintenanceTask, TreatmentProduct } from '../types'
 import { useInstallation } from '../context/InstallationContext'
 import { useT } from '../context/LocaleContext'
 import { useNow } from '../hooks/useNow'
@@ -25,12 +25,15 @@ import {
   translateLabel,
   stripMeasurementNotes,
   MEASURE_ACTION_TYPES,
+  PRODUCT_ACTION_TYPE,
   type TodoItem,
   type ParamStatus,
   type HistoryParamKey,
   type DynamicRanges,
 } from '../utils'
 import { ACTION_TYPE_LABELS } from './ActionForm'
+import { treatmentTitle, treatmentDetail } from '../treatments'
+import { useTreatments } from '../hooks/useTreatments'
 import { sanitizerCapabilities } from '../sanitizer'
 import SmartChlorCard from './SmartChlorCard'
 
@@ -84,7 +87,7 @@ type TileDef = {
   format: (v: number) => string
 }
 
-export default function DashboardPage({ actions, products: _products, onEdit, onDelete, onExport, onImport, onNavigate, onAdd, onAddInstallation }: Props) {
+export default function DashboardPage({ actions, products, onEdit, onDelete, onExport, onImport, onNavigate, onAdd, onAddInstallation }: Props) {
   const { active, ranges } = useInstallation()
   const { t, locale } = useT()
   const sanitizer = active?.sanitizer ?? 'chlorine'
@@ -119,6 +122,8 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
       .then((data: RecommendationsResponse | null) => setRecommendationsCount(data?.recommendations.length ?? null))
       .catch(() => setRecommendationsCount(null))
   }, [active?.id])
+
+  const treatments = useTreatments(active?.id)
 
   const [hoveredRowId, setHoveredRowId] = useState<number | null>(null)
 
@@ -366,7 +371,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
                 <tr>
                   <th>{t('table_date')}</th>
                   <th>{t('table_type')}</th>
-                  <th className="history-col-params">{t('table_parameters')}</th>
+                  <th className="history-col-params">{t('table_details')}</th>
                   <th className="history-col-notes">{t('table_notes')}</th>
                   <th></th>
                 </tr>
@@ -389,7 +394,7 @@ export default function DashboardPage({ actions, products: _products, onEdit, on
                       <ActionTypeBadge actionType={action.action_type} />
                     </td>
                     <td className="history-col-params">
-                      <ActionParamPills action={action} />
+                      <ActionDetails action={action} products={products} treatments={treatments} />
                     </td>
                     <td className="history-col-notes" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {/* Measurement notes carry auto-generated "TAC: 80.
@@ -609,6 +614,30 @@ function ActionTypeBadge({ actionType }: { actionType: string }) {
     }}>
       {translateLabel(t, ACTION_TYPE_LABELS, actionType)}
     </span>
+  )
+}
+
+/** What a history row did: the product and amount for a treatment, the
+ * status-coloured readings for a measurement. */
+function ActionDetails({ action, products, treatments }: {
+  action: Action
+  products: Product[]
+  treatments: TreatmentProduct[]
+}) {
+  const { t } = useT()
+  if (action.action_type !== PRODUCT_ACTION_TYPE) return <ActionParamPills action={action} />
+  const amount = treatmentDetail(action)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <span style={{ fontFamily: '"Sora", sans-serif', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+        {treatmentTitle(action, products, treatments, t)}
+      </span>
+      {amount && (
+        <span style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: 11, color: 'var(--text-muted)' }}>
+          {amount}
+        </span>
+      )}
+    </div>
   )
 }
 
